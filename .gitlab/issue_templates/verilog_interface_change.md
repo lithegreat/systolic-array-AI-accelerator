@@ -2,6 +2,12 @@
 
 <!-- Describe the interface behavior or signal changes -->
 
+## Branch Naming
+
+**Create branch as:** `git checkout -b 789-interface-description`
+
+→ GitLab auto-links branch to this issue
+
 ## Scope
 
 - [ ] Control/status interface

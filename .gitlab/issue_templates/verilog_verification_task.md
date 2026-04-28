@@ -2,6 +2,12 @@
 
 <!-- What behavior or module must be verified -->
 
+## Branch Naming
+
+**Create branch as:** `git checkout -b 101-verification-description`
+
+→ GitLab auto-links branch to this issue
+
 ## Verification Target
 
 - DUT module/path:

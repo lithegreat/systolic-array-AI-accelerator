@@ -1,10 +1,12 @@
+## Issue Link
+
+<!-- Branch should be named: {issue_number}-{description} for auto-detection -->
+
+Closes #
+
 ## RTL Change Summary
 
 <!-- What RTL changed and why -->
-
-## Related Issue
-
-Closes #
 
 ## Modified Areas
 

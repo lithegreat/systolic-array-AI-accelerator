@@ -7,6 +7,12 @@ For epics, copy this template to the group-level templates location.
 
 <!-- One-sentence description of the work item -->
 
+## Branch Naming
+
+**Create branch as:** `git checkout -b {issue_number}-description`
+
+→ GitLab auto-links branch to this issue
+
 ## Problem Statement
 
 <!-- What problem are we solving and why now? -->
