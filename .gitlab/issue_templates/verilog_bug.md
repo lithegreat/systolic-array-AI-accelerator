@@ -2,6 +2,12 @@
 
 <!-- Short description of incorrect RTL behavior -->
 
+## Branch Naming
+
+**Create branch as:** `git checkout -b 123-bug-description`
+
+→ GitLab auto-links branch to this issue
+
 ## Affected Module(s)
 
 - [ ] rtl/control/

@@ -1,10 +1,12 @@
+## Issue Link
+
+<!-- Branch should be named: {issue_number}-{description} for auto-detection -->
+
+Closes #
+
 ## Summary
 
 <!-- What changed and why -->
-
-## Related Work Items
-
-Closes #
 
 ## Type Of Change
 

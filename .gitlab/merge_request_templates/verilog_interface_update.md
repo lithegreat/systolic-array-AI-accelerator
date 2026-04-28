@@ -1,10 +1,12 @@
+## Issue Link
+
+<!-- Branch should be named: {issue_number}-{description} for auto-detection -->
+
+Closes #
+
 ## Interface Update Summary
 
 <!-- What interface changed and rationale -->
-
-## Related Issue
-
-Closes #
 
 ## Interface Changes
 

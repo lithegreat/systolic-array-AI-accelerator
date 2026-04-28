@@ -2,6 +2,12 @@
 
 <!-- New RTL capability or enhancement -->
 
+## Branch Naming
+
+**Create branch as:** `git checkout -b 456-feature-description`
+
+→ GitLab auto-links branch to this issue
+
 ## Motivation
 
 <!-- Why this is needed for the accelerator or milestone -->
