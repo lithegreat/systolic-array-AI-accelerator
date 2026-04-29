@@ -42,7 +42,7 @@
 - [ ] Testbench coverage added/updated in sim/testbenches/
 - [ ] Simulation script updated in sim/scripts/ if needed
 - [ ] Synthesis-safe RTL (no unsynthesizable constructs)
-- [ ] docs/interface_definition.md updated when interfaces change
+- [ ] docs/interface/ updated when interfaces change
 
 ## Risks/Dependencies
 

@@ -19,7 +19,7 @@ Closes #
 ## Interface Impact
 
 - [ ] No interface changes
-- [ ] Interface changes included and synced in docs/interface_definition.md
+- [ ] Interface changes included and synced in docs/interface/
 
 ## Verification
 
