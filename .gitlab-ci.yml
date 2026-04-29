@@ -1,0 +1,16 @@
+stages:
+  - check
+
+check_conventions:
+  stage: check
+  image: python:3-slim
+  script:
+    - pip install -r requirements.txt
+    - python3 scripts/check_conventions.py
+
+check_python_format:
+  stage: check
+  image: python:3-slim
+  script:
+    - pip install -r requirements.txt
+    - black --check .
