@@ -34,7 +34,7 @@ Closes #
 
 ## Required Documentation
 
-- [ ] docs/interface_definition.md updated
+- [ ] docs/interface/ updated
 - [ ] README.md updated if milestone/scope changed
 
 ## Verification Evidence

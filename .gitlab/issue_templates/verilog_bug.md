@@ -56,7 +56,7 @@
 - [ ] Bug reproduced in testbench before fix
 - [ ] Failing test now passes
 - [ ] No regression in related testbenches
-- [ ] docs/interface_definition.md updated if interface behavior changed
+- [ ] docs/interface/ updated if interface behavior changed
 
 ## Evidence
 
