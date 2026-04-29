@@ -27,7 +27,7 @@
 - For cross-owner edits, keep changes small and document rationale in commit/PR text.
 
 ## Interface-First Rule
-- `docs/interface_definition.md` is the source of truth for module interfaces.
+- `docs/interface/` is the source of truth for module interfaces.
 - Before adding or changing RTL interfaces, update and align the interface definition with the team.
 - If interface details are missing or ambiguous, do not invent protocol details silently. Add a TODO note and request clarification.
 
@@ -46,7 +46,7 @@
 
 ## Documentation Sync
 - For behavior changes affecting interfaces, update both:
-  - `docs/interface_definition.md`
+  - `docs/interface/`
   - `README.md` if scope, milestone impact, or team coordination expectations change
 - Prefer concise, factual updates over long narrative text.
 

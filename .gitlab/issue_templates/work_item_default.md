@@ -40,7 +40,7 @@ For epics, copy this template to the group-level templates location.
 ## Verification Plan
 
 - [ ] Add or update tests in sim/testbenches/
-- [ ] Verify interface behavior against docs/interface_definition.md
+- [ ] Verify interface behavior against docs/interface/
 - [ ] Include wave/script references if applicable
 
 ## Risks And Dependencies

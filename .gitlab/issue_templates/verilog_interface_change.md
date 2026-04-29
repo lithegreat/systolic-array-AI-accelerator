@@ -18,7 +18,7 @@
 
 ## Current Interface
 
-<!-- Reference current ports/protocol from docs/interface_definition.md -->
+<!-- Reference current ports/protocol from docs/interface/ -->
 
 ## Proposed Interface
 
@@ -38,7 +38,7 @@
 
 ## Documentation Plan
 
-- [ ] Update docs/interface_definition.md before/with implementation
+- [ ] Update docs/interface/ before/with implementation
 - [ ] Update README.md if milestone/scope is affected
 
 ## Approval Checklist
