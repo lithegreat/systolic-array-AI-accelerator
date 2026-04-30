@@ -38,6 +38,16 @@
 - Separate control-path and datapath logic when possible to improve readability and verification.
 - For shared constants/macros, prefer files in `rtl/include/`.
 
+## Development And Verification Flow
+The standard workflow for all functional changes follows this pipeline:
+1. **RTL design** — implement or update the module under `rtl/`.
+2. **Python golden model** — write or update a reference model (pure Python) that captures the expected behavior; place it alongside or referenced by the testbench.
+3. **cocotb testbench** — drive the DUT with cocotb, compare DUT outputs against the golden model; place testbenches under `sim/testbenches/`.
+4. **Verilator simulation** — run the cocotb testbench through Verilator; place simulation scripts in `sim/scripts/`.
+5. **CI** — CI runs all tests automatically on every push/MR; do not merge if CI is red.
+
+Every step must be present for a change to be considered complete. Do not skip or defer the golden model or testbench.
+
 ## Verification And Deliverables
 - Add or update matching testbenches under `sim/testbenches/` for functional changes.
 - Place simulation scripts in `sim/scripts/` and waveform artifacts/config in `sim/waves/` when needed.
