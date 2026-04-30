@@ -20,6 +20,12 @@ check_python_format:
     - pip install -r requirements/check.txt
     - black --check .
 
+check_gitkeep:
+  stage: check
+  image: $CHECK_PYTHON_IMAGE
+  script:
+    - python3 scripts/check_gitkeep.py
+
 cocotb_sim:
   stage: sim
   image:
