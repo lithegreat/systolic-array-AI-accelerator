@@ -2,6 +2,25 @@
 
 This project aims to develop a systolic array-based AI accelerator module for the Edu4Chip Didactic SoC platform.
 
+## 🛠️ Development Environment Setup 
+Linux users can follow the instructions below to set up the development environment. 
+
+Windows users are encouraged to use WSL (Windows Subsystem for Linux) for a similar experience.
+
+To set up the development environment, follow these steps:
+
+1. Clone the repository:
+   ```bash
+   git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
+   cd group5
+   ```
+2. Create a virtual environment and install dependencies:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
 ## 👥 Team Responsibilities (RTL Design)
 
 The hardware design is strictly divided into five core RTL modules, tracked via GitLab Issues to prevent merge conflicts and define clear ownership:
