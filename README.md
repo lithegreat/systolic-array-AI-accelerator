@@ -1,83 +1,131 @@
 # AI Accelerator for Didactic SoC
 
-This project aims to develop a systolic array-based AI accelerator module for the Edu4Chip Didactic SoC platform.
+This project implements a systolic-array based AI accelerator for the [Edu4Chip didactic SoC](https://github.com/Edu4Chip/Didactic-SoC) and includes RTL sources, Python golden models, cocotb testbenches, and Verilator-based simulation.
 
-## Current Implementation
+If you want the interface reference, see [docs/interface/README.md](docs/interface/README.md).
 
-The repository now contains a complete v1 output-stationary data path and verification stack:
+## Architecture Overview
+The ML accelerator architecture is divided into the following loosely-coupled functional blocks:
+- **Control Logic**: Orchestrates data movement and computation (in `rtl/control/`).
+- **MAC Unit**: The core Multiply-Accumulate processing element (in `rtl/MAC/`).
+- **Systolic Array**: Grid of MAC units for matrix multiplication (in `rtl/array/`).
+- **Matrix A & B**: Input distribution structures (in `rtl/matrix/`).
+- **Matrix C**: Output accumulation and readback logic (in `rtl/matrix/`).
 
-- RTL modules for `mac_pe`, `systolic_array`, `matrix_buffer_ab`, `matrix_buffer_c`, `control_unit`, and `accelerator_top`
-- Python golden models and cocotb testbenches for each major block
-- Verilator-based regression driven through `pytest`
+The integration target is the Edu4Chip SoC platform. Both ASIC (GF 22 nm FDX) and FPGA prototyping targets are maintained.
 
-Default build-time parameters are:
+## What lives where
+- `rtl/` contains the SystemVerilog design components (`MAC/`, `array/`, `matrix/`, `control/`, `top/`).
+- `sim/testbenches/` contains the cocotb and Verilator test scripts categorized per module.
+- `sim/common/` contains shared Python helpers and golden models.
+- `docs/` contains documentation on the Didactic SoC, GitLab coordination, and interfaces.
+- `fpga/` contains FPGA constraints and the Vivado project setup.
+- `asic/` contains reports and scripts targeting the GF 22 nm FDX technology node.
+- `sw/` contains C-based software drivers and tests for the RISC-V Ibex core interactions.
 
-- `M = 4`
-- `N = 4`
-- `K = 4`
-- `DATA_W = 16`
-- `ACC_W = 32`
+## Development and Verification Flow
+Functionality changes require the following pipeline to be considered complete:
+1. **RTL Design**: Implement the SystemVerilog design under `rtl/`. Sub-modules must adhere to the interface contracts defined in `docs/interface/`.
+2. **Python Golden Model**: Author a software reference model matching the expected behavioral outputs under `sim/testbenches/` or `sim/common/`.
+3. **Cocotb Testbench**: Develop Python-based testbenches utilizing cocotb to check DUT outputs against the golden model.
+4. **Verilator Simulation**: Confirm that tests pass properly through Verilator in a Linux environment.
+5. **CI Automation**: Assure every merge request natively passes in the automated CI jobs.
 
-The implemented dataflow is output-stationary: each PE keeps one output accumulator locally while Matrix A columns and Matrix B rows are streamed into the array.
+## Before you start
+- Use Linux for development. If you are on Windows, use WSL or another Linux environment.
+- Use Python 3.13 or an older supported Python 3 release. Python 3.14 is not supported yet because cocotb does not support it at the moment.
+- Install Git, Python, and Verilator before running the simulations.
 
-## 🛠️ Development Environment Setup 
-Linux users can follow the instructions below to set up the development environment. 
+## Quick start
+1. Clone the repository.
+2. Create and activate a Python virtual environment.
+3. Install the Python requirements.
+4. Run the checks or the test suite.
 
-Windows users are encouraged to use WSL (Windows Subsystem for Linux) for a similar experience.
+### Clone the repository
 
-To set up the development environment, follow these steps:
+```bash
+git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
+cd group5
+```
 
-1. Clone the repository:
-   ```bash
-   git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
-   cd group5
-   ```
-2. Create a virtual environment and install dependencies:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+### Create the Python environment
 
-3. Run the verification suite:
-   ```bash
-   pytest -vv sim/test_runner.py
-   ```
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-4. Run formatting and repository checks:
-   ```bash
-   black --check .
-   python3 scripts/check_conventions.py
-   ```
+If `python3` is not found, install Python from your Linux distribution first.
 
-## 👥 Team Responsibilities (RTL Design)
+## Run locally
+If Verilator is missing, install it with your package manager. On Debian or Ubuntu, for example:
 
-The hardware design is strictly divided into five core RTL modules, tracked via GitLab Issues to prevent merge conflicts and define clear ownership:
+```bash
+sudo apt install verilator
+```
 
-- **Issue #1: Control logic and Status / Control** (Li)
+On Fedora:
 
-- **Issue #2: MAC Unit** (Liu)
+```bash
+sudo dnf install verilator
+```
 
-- **Issue #3: Systolic array** (Zhong)
+## GitLab workflow
+This project should not be pushed directly to the `main` branch. Create a branch for your work and open a merge request.
 
-- **Issue #4: Matrix A and Matrix B** (Cao)
+Recommended flow:
+1. Create or pick a GitLab issue first.
+2. Create a branch for that issue.
+3. Open a merge request from that branch.
+4. Ask at least one other user to approve the MR before merging.
 
-- **Issue #5: Matrix C** (Shang)
+Use the issue and MR linking guide in [docs/GITLAB_ISSUE_LINKING.md](docs/GITLAB_ISSUE_LINKING.md).
 
-## 📅 Key Milestones
+Recommended branch naming:
 
-- **May 1**: Block diagram and interface description defined.
-- **May 15**: Code and Documentation - Tests fully defined.
-- **June 12**: Demonstration - RTL design successfully running on FPGA.
-- **July 3**: Code and Documentation - Specifications fulfilled for ASIC (gate-level).
-- **July 17**: Final deliverable - All source files, documentation, and presentation.
+```bash
+git checkout -b 2-mac-unit-pipeline-fix
+```
 
-## Verification Flow
+This makes it easier for GitLab to link the branch to the related issue.
 
-Functional changes in this repository are expected to follow this flow:
+In the MR description, link the issue explicitly. A common pattern is:
 
-1. RTL design under `rtl/`
-2. Python golden model for expected behavior
-3. cocotb testbench under `sim/testbenches/`
-4. Verilator simulation
-5. CI regression through `.gitlab-ci.yml`
+```markdown
+Closes #2
+```
+
+It is better to create the issue before the MR so the branch, discussion, and review all stay connected to one work item.
+
+## CI and pre-commit
+This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
+- convention checks
+- `black --check .`
+- `.gitkeep` validation
+- cocotb simulation through Verilator
+
+Pre-commit hooks are also configured for local use. They run:
+- `black`
+- `python scripts/check_conventions.py`
+- `python scripts/check_gitkeep.py`
+
+Install and enable pre-commit if you want the same checks before every commit:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Run it manually when needed:
+
+```bash
+pre-commit run --all-files
+```
+
+## Troubleshooting
+- If `python3` or `pip` is missing, install Python from your Linux distribution.
+- If the virtual environment does not activate, check that you are using a Linux shell.
+- If Verilator is missing, install it before running the simulation tests.
+- If a check fails, read the first error message first; it usually points to the real problem.
