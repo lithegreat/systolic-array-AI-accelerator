@@ -1,56 +1,78 @@
 # Module Interface Specification: Matrix A & B Buffers
 
-## 1. Overview 
-This module acts as the data buffer for Matrix A and Matrix B in the Systolic Array accelerator. It receives data from the RISC-V CPU via a 32-bit APB interface, unpacks the data based on the configured bit-width, stores it in internal registers/SRAM, and streams it to the Systolic Array using a synchronous Valid/Ready handshake protocol.
+## 1. Overview
+`matrix_buffer_ab` stores Matrix A and Matrix B through a 32-bit APB subordinate interface and then streams one A column and one B row per accepted beat into the output-stationary systolic array.
 
-## 2. Parameters 
+The implementation is fixed-geometry per build (`M`, `N`, `K` parameters) and stores matrices in row-major order:
+
+- `A[i,k]` at linear offset `i*K + k`
+- `B[k,j]` at linear offset `k*N + j`
+
+## 2. Parameters
+
 | Parameter Name | Default Value | Description |
 | :--- | :--- | :--- |
-| `DATA_W` | 16 | Data bit-width of a single element (Supported: 8, 16, 32). |
-| `M` | 4 | Number of rows in the Systolic Array. |
-| `N` | 4 | Number of columns in the Systolic Array. |
-| `APB_DW` | 32 | APB data bus width (Fixed by SoC architecture). |
+| `DATA_W` | `16` | Element bit width. The implemented unpacking logic supports widths that divide 32 evenly. Current verification uses `16`. |
+| `M` | `4` | Number of output rows / A rows. |
+| `N` | `4` | Number of output columns / B columns. |
+| `K` | `4` | Reduction dimension; number of stream beats per tile. |
+| `APB_AW` | `10` | APB address width. |
+| `APB_DW` | `32` | APB data width. |
 
-## 3. Port List 
+## 3. Port List
 
 ### 3.1 APB Interface
-* `input logic clk`: System clock.
-* `input logic rst_n`: Active-low synchronous reset.
-* `input logic [31:0] PWDATA`: APB write data bus.
-* `input logic PWRITE`: APB write enable.
-* `input logic PSEL`: APB slave select.
-* `input logic PENABLE`: APB enable.
-* `input logic [7:0] PADDR`: APB address bus (Lower 8 bits for register offset).
 
-### 3.2 Array Interface
-* `output logic mat_valid`: High when both Matrix A and B buffers are full and ready to stream.
-* `input logic sys_ready`: High when Systolic Array is ready to accept inputs.
-* `output logic [M*DATA_W-1:0] a_data`: A full column vector from Matrix A.
-* `output logic [N*DATA_W-1:0] b_data`: A full row vector from Matrix B.
+| Port | Direction | Width | Description |
+| :--- | :--- | :--- | :--- |
+| `clk` | Input | `1` | System clock |
+| `rst_n` | Input | `1` | Active-low synchronous reset |
+| `PADDR` | Input | `APB_AW` | APB address; local decode uses `PADDR[7:0]` |
+| `PSEL` | Input | `1` | APB select |
+| `PENABLE` | Input | `1` | APB enable |
+| `PWRITE` | Input | `1` | APB write enable |
+| `PWDATA` | Input | `APB_DW` | APB write data |
+| `PRDATA` | Output | `APB_DW` | APB read data |
+| `PREADY` | Output | `1` | Always asserted in v1 |
+| `PSLVERR` | Output | `1` | Always deasserted in v1 |
+
+### 3.2 Streaming Interface
+
+| Port | Direction | Width | Description |
+| :--- | :--- | :--- | :--- |
+| `mat_start` | Input | `1` | One-cycle pulse that starts a K-beat stream |
+| `mat_done` | Output | `1` | One-cycle pulse after the last beat is accepted |
+| `mat_valid` | Output | `1` | Stream beat valid |
+| `sys_ready` | Input | `1` | Systolic array ready |
+| `a_col` | Output | `M*DATA_W` | Packed A column vector for current `k` |
+| `b_row` | Output | `N*DATA_W` | Packed B row vector for current `k` |
 
 ## 4. Register Map
-*(Note: Base Address for Subsystem 0 is `0x01050000`)*
 
 | Offset | Name | Access | Description |
 | :--- | :--- | :--- | :--- |
-| `0x00` | `MAT_A_DATA` | W/O | Write port for Matrix A. Address auto-increments internally. |
-| `0x40` | `MAT_B_DATA` | W/O | Write port for Matrix B. Address auto-increments internally. |
-| `0x80` | `MAT_CTRL` | R/W | Control/Status register (e.g., bit 0: Clear Buffer, bit 1: Force Start). |
+| `0x00` | `MAT_A_DATA` | W/O | Write packed Matrix A elements; write pointer auto-increments |
+| `0x40` | `MAT_B_DATA` | W/O | Write packed Matrix B elements; write pointer auto-increments |
+| `0x80` | `MAT_CTRL` | R/W | Bit `0`: reset both write pointers. Read bit `1`: A full. Read bit `2`: B full |
 
-## 5. HW/SW Co-design & Data Packing Rules
-The APB bus width is strictly 32-bit. To maximize bus bandwidth, the software (C code) **MUST pack** multiple matrix elements into a single 32-bit word before writing to the APB interface. The hardware will unpack them automatically based on the `DATA_W` parameter.
+## 5. Data Packing Rules
 
-### 5.1 Packing Rule (C Code Perspective):
-* **If `DATA_W = 8`**: Pack 4 elements per write.
-  `PWDATA = (el_3 << 24) | (el_2 << 16) | (el_1 << 8) | el_0;`
-* **If `DATA_W = 16`**: Pack 2 elements per write.
-  `PWDATA = (el_1 << 16) | el_0;`
-* **If `DATA_W = 32`**: 1 element per write. No packing required.
+The APB bus is 32 bits wide. Elements are packed least-significant-lane first.
 
-### 5.2 Unpacking Rule (Hardware Perspective):
-The SystemVerilog module dynamically unpacks `PWDATA[31:0]` using the `DATA_W` parameter at compile time and stores the elements sequentially into the internal 2D register arrays.
+- If `DATA_W = 8`: 4 elements per write.
+- If `DATA_W = 16`: 2 elements per write.
+- If `DATA_W = 32`: 1 element per write.
 
-## 6. Timing and Handshake Protocol 
-* **Streaming Order:** Row-major . Data is written to the buffer row by row, matching the APB transaction format.
-* **Handshake:** Standard `Valid/Ready`. Data is successfully passed to the Systolic Array **only** on the rising clock edge where `mat_valid == 1` and `sys_ready == 1`.
-* **Vector Transfer:** Once the handshake is successful, a full vector `a_data` and a full vector `b_data` are transmitted to the MAC array concurrently in the same clock cycle.
+Example for `DATA_W = 16`:
+
+`PWDATA = (el_1 << 16) | el_0`
+
+## 6. Streaming Behavior
+
+- Software writes A and B in row-major order.
+- On `mat_start`, the buffer begins a `K`-beat stream.
+- Beat `k` drives:
+  - `a_col[i] = A[i,k]` for `i = 0 .. M-1`
+  - `b_row[j] = B[k,j]` for `j = 0 .. N-1`
+- A beat is consumed only when `mat_valid && sys_ready`.
+- After beat `K-1` is accepted, `mat_done` pulses for one cycle.
