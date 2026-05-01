@@ -117,7 +117,7 @@ async def run_one_tile(
     dut.out_ready.value = 0
     dut.in_valid.value = 0
 
-    assert len(captured) == M * N, f"only captured {len(captured)} of {M*N}"
+    assert len(captured) == M * N, f"only captured {len(captured)} of {M * N}"
 
     # Compare.
     for value, row, col in expected:

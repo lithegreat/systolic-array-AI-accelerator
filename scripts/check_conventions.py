@@ -37,7 +37,7 @@ def check_interface_naming():
 
 def check_root_files():
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    allowed_files = {"readme.md", "requirements.txt", "AGENTS.md"}
+    allowed_files = {"readme.md", "requirements.txt", "agents.md"}
     exit_code = 0
     for filename in os.listdir(root_dir):
         filepath = os.path.join(root_dir, filename)
@@ -48,7 +48,9 @@ def check_root_files():
         if filename.lower() in allowed_files:
             continue
         print(
-            f"Error: Invalid file in root directory '{filename}'. Only README.md and hidden files (.) are allowed."
+            f"Error: Invalid file in root directory '{filename}'. "
+            "Only README.md, AGENTS.md, requirements.txt, and hidden files "
+            "(.) are allowed."
         )
         exit_code = 1
 
