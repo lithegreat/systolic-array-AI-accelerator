@@ -118,6 +118,12 @@ For the LRZ GitLab host, use `gitlab.lrz.de`. If remotes use a different SSH
 hostname than the API host, pass `-R OWNER/REPO` or configure the host in
 `glab`.
 
+For failed pipelines, use the project skill in the vendor-neutral location
+`.agents/skills/glab-ci/SKILL.md`. The workflow is: list branch pipelines with
+`glab ci list`, inspect failed jobs through the GitLab API, fetch logs with
+`glab ci trace`, patch the smallest local fix, push, and verify the newest
+pipeline reaches `success`.
+
 ## Agent Behavior
 
 - Make minimal, reviewable patches.
@@ -135,7 +141,7 @@ hostname than the API host, pass `-R OWNER/REPO` or configure the host in
 This file consolidates agent-facing guidance from:
 - `GEMINI.md`
 - `.github/copilot-instructions.md`
-- `.github/skills/glab-cli/SKILL.md`
+- `.agents/skills/glab-ci/SKILL.md`
 - `README.md`
 - `docs/GITLAB_ISSUE_LINKING.md`
 - `docs/interface/README.md`

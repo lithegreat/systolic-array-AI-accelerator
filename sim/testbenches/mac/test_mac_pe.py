@@ -36,15 +36,15 @@ def _check(dut, golden: MacPeGolden) -> None:
     a_out_dut = to_signed(int(dut.a_out.value), DATA_W)
     b_out_dut = to_signed(int(dut.b_out.value), DATA_W)
     pe_out_dut = to_signed(int(dut.pe_out.value), ACC_W)
-    assert (
-        a_out_dut == golden.a_out
-    ), f"a_out mismatch dut={a_out_dut} ref={golden.a_out}"
-    assert (
-        b_out_dut == golden.b_out
-    ), f"b_out mismatch dut={b_out_dut} ref={golden.b_out}"
-    assert (
-        pe_out_dut == golden.pe_out
-    ), f"pe_out mismatch dut={pe_out_dut} ref={golden.pe_out}"
+    assert a_out_dut == golden.a_out, (
+        f"a_out mismatch dut={a_out_dut} ref={golden.a_out}"
+    )
+    assert b_out_dut == golden.b_out, (
+        f"b_out mismatch dut={b_out_dut} ref={golden.b_out}"
+    )
+    assert pe_out_dut == golden.pe_out, (
+        f"pe_out mismatch dut={pe_out_dut} ref={golden.pe_out}"
+    )
 
 
 @cocotb.test()

@@ -90,13 +90,13 @@ async def test_apb_write_then_stream(dut) -> None:
     # Compare.
     for k, (a_vec, b_vec) in enumerate(captured):
         for i in range(M):
-            assert a_vec[i] == int(
-                a[i, k]
-            ), f"a beat {k} lane {i}: dut={a_vec[i]} ref={a[i,k]}"
+            assert a_vec[i] == int(a[i, k]), (
+                f"a beat {k} lane {i}: dut={a_vec[i]} ref={a[i, k]}"
+            )
         for j in range(N):
-            assert b_vec[j] == int(
-                b[k, j]
-            ), f"b beat {k} lane {j}: dut={b_vec[j]} ref={b[k,j]}"
+            assert b_vec[j] == int(b[k, j]), (
+                f"b beat {k} lane {j}: dut={b_vec[j]} ref={b[k, j]}"
+            )
 
 
 @cocotb.test()

@@ -18,7 +18,7 @@ check_python_format:
   image: $CHECK_PYTHON_IMAGE
   script:
     - pip install -r requirements/check.txt
-    - black --check .
+    - ruff format --check .
 
 check_gitkeep:
   stage: check
@@ -36,4 +36,3 @@ cocotb_sim:
     - pip3 install --break-system-packages -r requirements/sim.txt
   script:
     - pytest -vv sim/test_runner.py
-
