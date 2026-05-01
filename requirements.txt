@@ -1,2 +1,2 @@
-black
+ruff
 pre_commit

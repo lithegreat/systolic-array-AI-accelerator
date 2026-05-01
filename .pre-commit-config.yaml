@@ -1,12 +1,11 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-        language_version: python3
-
   - repo: local
     hooks:
+      - id: ruff-format
+        name: Ruff Format
+        entry: ruff format --check .
+        language: system
+        pass_filenames: false
       - id: check-conventions
         name: Check Project Conventions (Interface Naming & Root Files)
         entry: python scripts/check_conventions.py
