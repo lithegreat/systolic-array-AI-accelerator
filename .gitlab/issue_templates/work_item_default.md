@@ -1,5 +1,6 @@
 <!--
-Use this template for issues, tasks, incidents, and service desk tickets.
+Use this template for general issues, tasks, improvements, documentation,
+tooling, CI, and service desk tickets.
 For epics, copy this template to the group-level templates location.
 -->
 
@@ -7,11 +8,31 @@ For epics, copy this template to the group-level templates location.
 
 <!-- One-sentence description of the work item -->
 
+## Work Type
+
+- [ ] Bug
+- [ ] Feature
+- [ ] Improvement
+- [ ] Refactor
+- [ ] Documentation
+- [ ] Tooling/CI
+- [ ] Verification/simulation
+- [ ] Maintenance/chore
+
+## Area
+
+- [ ] RTL
+- [ ] Verification/simulation
+- [ ] Documentation
+- [ ] Tooling/CI
+- [ ] Project/process
+- [ ] Other:
+
 ## Branch Naming
 
-**Create branch as:** `git checkout -b {issue_number}-description`
+**Recommended:** `git checkout -b {issue_number}-description`
 
-→ GitLab auto-links branch to this issue
+GitLab auto-links branches that start with the issue number.
 
 ## Problem Statement
 
@@ -35,13 +56,15 @@ For epics, copy this template to the group-level templates location.
 
 ## Implementation Notes
 
-<!-- Relevant architecture/interface details -->
+<!-- Relevant context, design notes, scripts, docs, or architecture/interface details -->
 
 ## Verification Plan
 
-- [ ] Add or update tests in sim/testbenches/
-- [ ] Verify interface behavior against docs/interface/
-- [ ] Include wave/script references if applicable
+- [ ] Not needed; reason:
+- [ ] Add or update tests in `sim/testbenches/`
+- [ ] Verify interface behavior against `docs/interface/`
+- [ ] Run relevant tooling/CI command:
+- [ ] Include wave/script/log references if applicable
 
 ## Risks And Dependencies
 
