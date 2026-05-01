@@ -1,6 +1,6 @@
-## Issue Link
+## Related Issue
 
-<!-- Branch should be named: {issue_number}-{description} for auto-detection -->
+<!-- Prefer an issue for RTL work. If there is no issue, write "No issue:" with a short reason. -->
 
 Closes #
 
@@ -22,6 +22,7 @@ Closes #
 - [ ] Bug fix
 - [ ] Functional enhancement
 - [ ] Refactor only (no functional change)
+- [ ] Maintenance-only RTL cleanup
 
 ## Interface Impact
 
