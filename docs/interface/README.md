@@ -13,3 +13,4 @@ Current documents:
 - [matrix buffer a&b](matrix_buffer_a_b_if.md)
 - [matrix buffer c](matrix_buffer_c_if.md)
 - [control unit](control_unit_if.md)
+- [accelerator top](accelerator_top_if.md)
