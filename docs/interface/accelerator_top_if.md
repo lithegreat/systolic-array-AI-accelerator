@@ -8,212 +8,161 @@ It does not implement matrix storage or compute itself. Instead, it routes softw
 
 `control_unit` -> `matrix_buffer_ab` -> `systolic_array` -> `matrix_buffer_c`
 
-## 2. Block Diagram
+## 2. Block Diagrams
+
+### 2.1 APB Routing and Address Decode
+
+```mermaid
+flowchart LR
+   external["<b>External APB Ports</b>
+PADDR, PSEL, PENABLE
+PWRITE, PWDATA"]
+   
+   decode{{"|PADDR[9:8]|
+Decode"}}
+   
+   ab_apb["<b>matrix_buffer_ab</b>
+PADDR[7:0], PSEL, PENABLE
+PWRITE, PWDATA, PRDATA
+PREADY, PSLVERR"]
+   ctrl_apb["<b>control_unit</b>
+PADDR[7:0], PSEL, PENABLE
+PWRITE, PWDATA, PRDATA
+PREADY, PSLVERR"]
+   c_apb["<b>matrix_buffer_c</b>
+PADDR[7:0], PSEL, PENABLE
+PWRITE, PWDATA, PRDATA
+PREADY, PSLVERR"]
+   
+   mux["<b>Mux</b>
+PRDATA
+PREADY
+PSLVERR"]
+   
+   external --> decode
+   
+   decode -- "00" --> ab_apb
+   decode -- "01" --> ctrl_apb
+   decode -- "10" --> c_apb
+   
+   ab_apb --> mux
+   ctrl_apb --> mux
+   c_apb --> mux
+   
+   mux --> external
+```
+
+### 2.2 Control and Interrupt Flow
 
 ```mermaid
 flowchart TB
-   subgraph external[Top-level external ports]
-      direction LR
-      clk_in["clk_in"]
-      reset_int["reset_int"]
-      PADDR["PADDR"]
-      PSEL["PSEL"]
-      PENABLE["PENABLE"]
-      PWRITE["PWRITE"]
-      PWDATA["PWDATA"]
-      PRDATA["PRDATA"]
-      PREADY["PREADY"]
-      PSLVERR["PSLVERR"]
-      irq_en_4["irq_en_4"]
-      ss_ctrl_4["ss_ctrl_4"]
-      irq_4["irq_4"]
-   end
-
-   subgraph router[Top wrapper routing and unused v1 nets]
-      direction LR
-      prdata_mux["PRDATA mux"]
-      pready_mux["PREADY mux"]
-      pslverr_mux["PSLVERR mux"]
-      cfg_export["cfg_m / cfg_n / cfg_k / soft_reset"]
-      legacy_unused["matrix_a/b/c addr-ren/wen (unused)"]
-      clear_unused["array_clear (unused in v1)"]
-      mat_done_unused["mat_done (unused)"]
-      capture_ready_unused["c_in_ready (unused)"]
-      capture_full_unused["capture_full (unused)"]
-      out_ready_high["out_ready tied high"]
-   end
-
-   subgraph ctrl[control_unit ports]
-      direction TB
-      ctrl_clk["clk_in"]
-      ctrl_reset["reset_int"]
-      ctrl_PADDR["PADDR"]
-      ctrl_PSEL["PSEL"]
-      ctrl_PENABLE["PENABLE"]
-      ctrl_PWRITE["PWRITE"]
-      ctrl_PWDATA["PWDATA"]
-      ctrl_PRDATA["PRDATA"]
-      ctrl_PREADY["PREADY"]
-      ctrl_PSLVERR["PSLVERR"]
-      ctrl_irq_en_4["irq_en_4"]
-      ctrl_ss_ctrl_4["ss_ctrl_4"]
-      ctrl_irq_4["irq_4"]
-      ctrl_matrix_a_addr["matrix_a_addr"]
-      ctrl_matrix_a_ren["matrix_a_ren"]
-      ctrl_matrix_b_addr["matrix_b_addr"]
-      ctrl_matrix_b_ren["matrix_b_ren"]
-      ctrl_matrix_c_addr["matrix_c_addr"]
-      ctrl_matrix_c_wen["matrix_c_wen"]
-      ctrl_array_start["array_start"]
-      ctrl_array_clear["array_clear"]
-      ctrl_array_done["array_done"]
-      ctrl_cfg_m_dim["cfg_m_dim"]
-      ctrl_cfg_n_dim["cfg_n_dim"]
-      ctrl_cfg_k_dim["cfg_k_dim"]
-      ctrl_soft_reset["soft_reset"]
-   end
-
-   subgraph ab[matrix_buffer_ab ports]
-      direction TB
-      ab_clk["clk"]
-      ab_rst_n["rst_n"]
-      ab_PADDR["PADDR"]
-      ab_PSEL["PSEL"]
-      ab_PENABLE["PENABLE"]
-      ab_PWRITE["PWRITE"]
-      ab_PWDATA["PWDATA"]
-      ab_PRDATA["PRDATA"]
-      ab_PREADY["PREADY"]
-      ab_PSLVERR["PSLVERR"]
-      ab_mat_start["mat_start"]
-      ab_mat_done["mat_done"]
-      ab_mat_valid["mat_valid"]
-      ab_sys_ready["sys_ready"]
-      ab_a_col["a_col"]
-      ab_b_row["b_row"]
-   end
-
-   subgraph array[systolic_array ports]
-      direction TB
-      array_clk["clk"]
-      array_rst_n["rst_n"]
-      array_start["start"]
-      array_done["done"]
-      array_in_valid["in_valid"]
-      array_in_ready["in_ready"]
-      array_a_col["a_col"]
-      array_b_row["b_row"]
-      array_out_valid["out_valid"]
-      array_out_ready["out_ready"]
-      array_c_data["c_data"]
-      array_c_row["c_row"]
-      array_c_col["c_col"]
-   end
-
-   subgraph cbuf[matrix_buffer_c ports]
-      direction TB
-      c_clk["clk"]
-      c_rst_n["rst_n"]
-      c_PADDR["PADDR"]
-      c_PSEL["PSEL"]
-      c_PENABLE["PENABLE"]
-      c_PWRITE["PWRITE"]
-      c_PWDATA["PWDATA"]
-      c_PRDATA["PRDATA"]
-      c_PREADY["PREADY"]
-      c_PSLVERR["PSLVERR"]
-      c_in_valid["c_in_valid"]
-      c_in_ready["c_in_ready"]
-      c_data_in["c_data_in"]
-      c_row_in["c_row_in"]
-      c_col_in["c_col_in"]
-      c_capture_full["capture_full"]
-   end
-
-   clk_in --> ctrl_clk
-   clk_in --> ab_clk
-   clk_in --> array_clk
-   clk_in --> c_clk
-
-   reset_int --> ctrl_reset
-   reset_int --> ab_rst_n
-   reset_int --> array_rst_n
-   reset_int --> c_rst_n
-
-   PADDR --> ctrl_PADDR
-   PADDR --> ab_PADDR
-   PADDR --> c_PADDR
-   PSEL --> ctrl_PSEL
-   PSEL --> ab_PSEL
-   PSEL --> c_PSEL
-   PENABLE --> ctrl_PENABLE
-   PENABLE --> ab_PENABLE
-   PENABLE --> c_PENABLE
-   PWRITE --> ctrl_PWRITE
-   PWRITE --> ab_PWRITE
-   PWRITE --> c_PWRITE
-   PWDATA --> ctrl_PWDATA
-   PWDATA --> ab_PWDATA
-   PWDATA --> c_PWDATA
-
-   ctrl_PRDATA --> prdata_mux
-   ab_PRDATA --> prdata_mux
-   c_PRDATA --> prdata_mux
-   prdata_mux --> PRDATA
-
-   ctrl_PREADY --> pready_mux
-   ab_PREADY --> pready_mux
-   c_PREADY --> pready_mux
-   pready_mux --> PREADY
-
-   ctrl_PSLVERR --> pslverr_mux
-   ab_PSLVERR --> pslverr_mux
-   c_PSLVERR --> pslverr_mux
-   pslverr_mux --> PSLVERR
-
-   irq_en_4 --> ctrl_irq_en_4
-   ss_ctrl_4 --> ctrl_ss_ctrl_4
-   ctrl_irq_4 --> irq_4
-
-   ctrl_matrix_a_addr --> legacy_unused
-   ctrl_matrix_a_ren --> legacy_unused
-   ctrl_matrix_b_addr --> legacy_unused
-   ctrl_matrix_b_ren --> legacy_unused
-   ctrl_matrix_c_addr --> legacy_unused
-   ctrl_matrix_c_wen --> legacy_unused
-
-   ctrl_cfg_m_dim --> cfg_export
-   ctrl_cfg_n_dim --> cfg_export
-   ctrl_cfg_k_dim --> cfg_export
-   ctrl_soft_reset --> cfg_export
-
-   ctrl_array_start --> ab_mat_start
-   ctrl_array_start --> array_start
-   ctrl_array_clear --> clear_unused
-   array_done --> ctrl_array_done
-
-   ab_mat_valid --> array_in_valid
-   array_in_ready --> ab_sys_ready
-   ab_a_col --> array_a_col
-   ab_b_row --> array_b_row
-
-   array_out_valid --> c_in_valid
-   array_c_data --> c_data_in
-   array_c_row --> c_row_in
-   array_c_col --> c_col_in
-   c_in_ready --> capture_ready_unused
-   c_capture_full --> capture_full_unused
-
-   array_out_ready --> out_ready_high
-   out_ready_high --> array_out_ready
-
-   ab_mat_done --> mat_done_unused
-   ab_mat_done -. completion pulse .-> clear_unused
+   soc["<b>SoC</b>"]
+   
+   irq_en["irq_en_4"]
+   ss_ctrl["ss_ctrl_4"]
+   
+   ctrl["<b>control_unit</b>
+array_start, array_clear
+array_done
+cfg_m/n/k"]
+   
+   array["<b>systolic_array</b>
+start, done"]
+   
+   ab["<b>matrix_buffer_ab</b>
+mat_start"]
+   
+   irq["irq_4"]
+   
+   soc --> irq_en
+   soc --> ss_ctrl
+   
+   irq_en --> ctrl
+   ss_ctrl --> ctrl
+   
+   ctrl -- array_start --> ab
+   ctrl -- array_start --> array
+   
+   array -- array_done --> ctrl
+   
+   ctrl --> irq
+   irq --> soc
+   
+   style ctrl fill:#e1f5ff
+   style array fill:#f3e5f5
 ```
 
-## 3. Port-Level View
+### 2.3 Data Path (A/B Input to C Output)
 
-### 3.1 External Ports
+```mermaid
+flowchart LR
+   ab["<b>matrix_buffer_ab</b>
+a_col, b_row
+mat_valid, sys_ready"]
+   
+   array["<b>systolic_array</b>
+in_valid, in_ready
+a_col, b_row
+out_valid
+c_data, c_row, c_col"]
+   
+   c["<b>matrix_buffer_c</b>
+c_in_valid
+c_data_in, c_row_in, c_col_in"]
+   
+   ab -- "mat_valid" --> array
+   ab -- "a_col, b_row" --> array
+   array -- "in_ready" --> ab
+   
+   array -- "out_valid" --> c
+   array -- "c_data/row/col" --> c
+   
+   style ab fill:#c8e6c9
+   style array fill:#bbdefb
+   style c fill:#fff9c4
+```
+
+### 2.4 Clock and Reset Distribution
+
+```mermaid
+flowchart TB
+   clk["<b>clk_in</b>"]
+   rst["<b>reset_int</b>"]
+   
+   ctrl["control_unit"]
+   ab["matrix_buffer_ab"]
+   array["systolic_array"]
+   c["matrix_buffer_c"]
+   
+   clk --> ctrl
+   clk --> ab
+   clk --> array
+   clk --> c
+   
+   rst --> ctrl
+   rst --> ab
+   rst --> array
+   rst --> c
+   
+   style clk fill:#fff59d
+   style rst fill:#ffccbc
+```
+
+## 3. Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `DATA_W` | `int unsigned` | `16` | Bit-width for Matrix A and Matrix B data elements. |
+| `ACC_W` | `int unsigned` | `32` | Bit-width for Matrix C accumulation results. |
+| `M` | `int unsigned` | `4` | Number of rows in the systolic array and buffers. |
+| `N` | `int unsigned` | `4` | Number of columns in the systolic array and buffers. |
+| `K` | `int unsigned` | `4` | Number of elements in the reduction dimension. |
+| `APB_AW` | `int unsigned` | `10` | Address width for the APB subordinate interface. |
+| `APB_DW` | `int unsigned` | `32` | Data width for the APB subordinate interface. |
+
+## 4. Port-Level View
+
+### 4.1 External Ports
 
 | Port Name | Direction | Width | Connected block | Detailed behavior |
 | --- | --- | --- | --- | --- |
@@ -238,7 +187,7 @@ Port-by-port summary:
 - `PRDATA`, `PREADY`, and `PSLVERR` are the return path from the selected sub-block through the top-level APB mux.
 - `irq_en_4`, `ss_ctrl_4`, and `irq_4` are the SoC-facing sideband and interrupt signals that only touch the control unit.
 
-### 3.2 Internal Interconnect
+### 4.2 Internal Interconnect
 
 | Signal | Source | Sink | Description |
 | --- | --- | --- | --- |
@@ -251,8 +200,13 @@ Port-by-port summary:
 | `b_row` | `matrix_buffer_ab` | `systolic_array` | Packed B row vector |
 | `out_valid` | `systolic_array` | `matrix_buffer_c` | Valid C output element |
 | `c_data`, `c_row`, `c_col` | `systolic_array` | `matrix_buffer_c` | Captured output element and indices |
+| `cfg_m`, `cfg_n`, `cfg_k` | `control_unit` | unused in top | Configuration dimensions exported from `control_unit` (unused to avoid lint warnings) |
+| `soft_reset_unused` | `control_unit` | unused in top | Soft reset exported from `control_unit` (unused) |
+| `mat_done` | `matrix_buffer_ab` | unused in top | Done pulse from `matrix_buffer_ab` (unused) |
+| `cap_full` | `matrix_buffer_c` | unused in top | Capture full flag from `matrix_buffer_c` (unused) |
+| `ma_addr`, `mb_addr`, `mc_addr`, `ma_ren`, `mb_ren`, `mc_wen` | `control_unit` | unused in top | Legacy matrix memory interface signals (unused) |
 
-## 4. Address Decode
+## 5. Address Decode
 
 `accelerator_top` decodes the top two APB address bits:
 
@@ -264,7 +218,7 @@ Port-by-port summary:
 
 Each sub-block keeps its own local `PADDR[7:0]` decode.
 
-## 5. Compute Flow
+## 6. Compute Flow
 
 1. Software programs Matrix A and Matrix B through `matrix_buffer_ab`.
 2. Software writes the control register in `control_unit` to request a start.
@@ -274,7 +228,7 @@ Each sub-block keeps its own local `PADDR[7:0]` decode.
 6. `matrix_buffer_c` captures the outputs in row-major order.
 7. `systolic_array` asserts `array_done`, and `control_unit` raises `done` state and `irq_4` when enabled.
 
-## 6. Notes
+## 7. Notes
 
 - In v1, `PREADY` is effectively driven by the selected sub-block or deasserted when no sub-block is selected.
 - `out_ready` is tied high in the top level, so Matrix C capture is always ready in v1.
