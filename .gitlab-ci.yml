@@ -13,4 +13,4 @@ check_python_format:
   image: python:3-slim
   script:
     - pip install -r requirements.txt
-    - black --check .
+    - ruff format --check .
