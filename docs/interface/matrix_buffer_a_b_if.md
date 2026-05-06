@@ -55,6 +55,11 @@ The implementation is fixed-geometry per build (`M`, `N`, `K` parameters) and st
 | `0x40` | `MAT_B_DATA` | W/O | Write packed Matrix B elements; write pointer auto-increments |
 | `0x80` | `MAT_CTRL` | R/W | Bit `0`: reset both write pointers. Read bit `1`: A full. Read bit `2`: B full |
 
+> **Notes on APB Access:**
+> - **Overflow Protection:** Writes beyond the buffer capacity (`M*K` for A, `K*N` for B) are safely ignored by hardware.
+> - **W/O Read Behavior:** Reading `0x00` or `0x40` will not cause a slave error but will safely return `0x00000000`.
+> - **Transient Reset:** Writing `1` to `MAT_CTRL[0]` triggers a reset in the same cycle. It self-clears, so software does not need to write `0` back.
+
 ## 5. Data Packing Rules
 
 The APB bus is 32 bits wide. Elements are packed least-significant-lane first.
