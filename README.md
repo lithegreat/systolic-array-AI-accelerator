@@ -25,7 +25,7 @@ To set up the development environment, follow these steps:
    git submodule update
    ```
 
-## 📦 Submodules
+### 📦 Submodules
 
 | Path | Description |
 |------|-------------|
