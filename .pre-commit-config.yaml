@@ -12,3 +12,10 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: check-gitkeep
+        name: Check .gitkeep not mixed with real content
+        entry: python scripts/check_gitkeep.py
+        language: system
+        pass_filenames: false
+        always_run: true
