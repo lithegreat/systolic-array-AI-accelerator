@@ -10,27 +10,15 @@ Windows users are encouraged to use WSL (Windows Subsystem for Linux) for a simi
 To set up the development environment, follow these steps:
 
 1. Clone the repository (including submodules):
-
-   You need a token for TUM ShareLaTeX to access the report submodule.
    ```bash
    git clone --recurse-submodules https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
    cd group5
    ```
-
-   If you encounter issues with submodules, you can also clone them manually:
+   If you already cloned without `--recurse-submodules`, initialise them afterwards:
    ```bash
-   git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
-   cd group5
-   git submodule init
-   git submodule update
+   git submodule update --init --recursive
    ```
 
-### 📦 Submodules
-
-| Path | Description |
-|------|-------------|
-| `Didactic-SoC` | Edu4Chip Didactic SoC platform ([GitHub](https://github.com/Edu4Chip/Didactic-SoC)) |
-| `report` | Project report (TUM ShareLaTeX), requires a token for access |
 2. Create a virtual environment and install dependencies:
    ```bash
    python3 -m venv .venv
