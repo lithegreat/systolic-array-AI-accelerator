@@ -1,6 +1,3 @@
 [submodule "Didactic-SoC"]
 	path = Didactic-SoC
 	url = https://github.com/Edu4Chip/Didactic-SoC
-[submodule "report"]
-	path = report
-	url = https://git@sharelatex.tum.de/git/69eb43eed2ef517ca19eb2be
