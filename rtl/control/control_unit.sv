@@ -221,4 +221,4 @@ module control_unit
     logic _unused_ss;
     assign _unused_ss = |ss_ctrl_4;
 
-endmodule
+endmodule;
