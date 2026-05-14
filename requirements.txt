@@ -1,2 +1,2 @@
-ruff
-pre_commit
+-r requirements/check.txt
+-r requirements/sim.txt

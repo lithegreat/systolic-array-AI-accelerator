@@ -1,16 +1,38 @@
 stages:
   - check
+  - sim
+
+variables:
+  CHECK_PYTHON_IMAGE: python:3.13-slim
+  SIM_IMAGE: verilator/verilator:latest
 
 check_conventions:
   stage: check
-  image: python:3-slim
+  image: $CHECK_PYTHON_IMAGE
   script:
-    - pip install -r requirements.txt
+    - pip install -r requirements/check.txt
     - python3 scripts/check_conventions.py
 
 check_python_format:
   stage: check
-  image: python:3-slim
+  image: $CHECK_PYTHON_IMAGE
   script:
-    - pip install -r requirements.txt
+    - pip install -r requirements/check.txt
     - ruff format --check .
+
+check_gitkeep:
+  stage: check
+  image: $CHECK_PYTHON_IMAGE
+  script:
+    - python3 scripts/check_gitkeep.py
+
+cocotb_sim:
+  stage: sim
+  image:
+    name: $SIM_IMAGE
+    entrypoint: [""]
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-dev make g++
+    - pip3 install --break-system-packages -r requirements/sim.txt
+  script:
+    - pytest -vv sim/test_runner.py
