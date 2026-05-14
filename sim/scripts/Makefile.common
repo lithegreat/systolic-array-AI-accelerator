@@ -1,0 +1,32 @@
+# -----------------------------------------------------------------------------
+# Makefile.common -- shared cocotb + Verilator boilerplate.
+# Per-test Makefiles include this file after defining:
+#   TOPLEVEL    : RTL top module under test
+#   MODULE      : Python testbench module name (no .py)
+#   VERILOG_SOURCES : space-separated list of RTL files
+#   COCOTB_TB_DIR (optional) : extra dir to add to PYTHONPATH
+# -----------------------------------------------------------------------------
+
+SIM            ?= verilator
+TOPLEVEL_LANG  ?= verilog
+WAVES          ?= 1
+
+# Repo root resolved from this file's location.
+COMMON_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+REPO_ROOT  := $(abspath $(COMMON_DIR)/../..)
+
+# Always include the shared package directory.
+COMPILE_ARGS += -I$(REPO_ROOT)/rtl/include
+
+# Verilator-specific tweaks: enable trace, ignore harmless lints from package
+# imports, allow signed arithmetic warnings.
+ifeq ($(SIM),verilator)
+EXTRA_ARGS += --trace --trace-structs
+EXTRA_ARGS += -Wno-fatal -Wno-WIDTH -Wno-UNUSED -Wno-UNOPTFLAT
+EXTRA_ARGS += --timing
+endif
+
+# Make the shared Python helpers importable.
+export PYTHONPATH := $(REPO_ROOT)/sim/testbenches/common:$(COCOTB_TB_DIR):$(PYTHONPATH)
+
+include $(shell cocotb-config --makefiles)/Makefile.sim

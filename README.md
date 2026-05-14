@@ -1,44 +1,131 @@
 # AI Accelerator for Didactic SoC
 
-This project aims to develop a systolic array-based AI accelerator module for the Edu4Chip Didactic SoC platform.
+This project implements a systolic-array based AI accelerator for the [Edu4Chip didactic SoC](https://github.com/Edu4Chip/Didactic-SoC) and includes RTL sources, Python golden models, cocotb testbenches, and Verilator-based simulation.
 
-## 🛠️ Development Environment Setup 
-Linux users can follow the instructions below to set up the development environment. 
+If you want the interface reference, see [docs/interface/README.md](docs/interface/README.md).
 
-Windows users are encouraged to use WSL (Windows Subsystem for Linux) for a similar experience.
+## Architecture Overview
+The ML accelerator architecture is divided into the following loosely-coupled functional blocks:
+- **Control Logic**: Orchestrates data movement and computation (in `rtl/control/`).
+- **MAC Unit**: The core Multiply-Accumulate processing element (in `rtl/MAC/`).
+- **Systolic Array**: Grid of MAC units for matrix multiplication (in `rtl/array/`).
+- **Matrix A & B**: Input distribution structures (in `rtl/matrix/`).
+- **Matrix C**: Output accumulation and readback logic (in `rtl/matrix/`).
 
-To set up the development environment, follow these steps:
+The integration target is the Edu4Chip SoC platform. Both ASIC (GF 22 nm FDX) and FPGA prototyping targets are maintained.
 
-1. Clone the repository:
-   ```bash
-   git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
-   cd group5
-   ```
-2. Create a virtual environment and install dependencies:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+## What lives where
+- `rtl/` contains the SystemVerilog design components (`MAC/`, `array/`, `matrix/`, `control/`, `top/`).
+- `sim/testbenches/` contains the cocotb and Verilator test scripts categorized per module.
+- `sim/common/` contains shared Python helpers and golden models.
+- `docs/` contains documentation on the Didactic SoC, GitLab coordination, and interfaces.
+- `fpga/` contains FPGA constraints and the Vivado project setup.
+- `asic/` contains reports and scripts targeting the GF 22 nm FDX technology node.
+- `sw/` contains C-based software drivers and tests for the RISC-V Ibex core interactions.
 
-## 👥 Team Responsibilities (RTL Design)
+## Development and Verification Flow
+Functionality changes require the following pipeline to be considered complete:
+1. **RTL Design**: Implement the SystemVerilog design under `rtl/`. Sub-modules must adhere to the interface contracts defined in `docs/interface/`.
+2. **Python Golden Model**: Author a software reference model matching the expected behavioral outputs under `sim/testbenches/` or `sim/common/`.
+3. **Cocotb Testbench**: Develop Python-based testbenches utilizing cocotb to check DUT outputs against the golden model.
+4. **Verilator Simulation**: Confirm that tests pass properly through Verilator in a Linux environment.
+5. **CI Automation**: Assure every merge request natively passes in the automated CI jobs.
 
-The hardware design is strictly divided into five core RTL modules, tracked via GitLab Issues to prevent merge conflicts and define clear ownership:
+## Before you start
+- Use Linux for development. If you are on Windows, use WSL or another Linux environment.
+- Use Python 3.13 or an older supported Python 3 release. Python 3.14 is not supported yet because cocotb does not support it at the moment.
+- Install Git, Python, and Verilator before running the simulations.
 
-- **Issue #1: Control logic and Status / Control** (Li)
+## Quick start
+1. Clone the repository.
+2. Create and activate a Python virtual environment.
+3. Install the Python requirements.
+4. Run the checks or the test suite.
 
-- **Issue #2: MAC Unit** (Liu)
+### Clone the repository
 
-- **Issue #3: Systolic array** (Zhong)
+```bash
+git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
+cd group5
+```
 
-- **Issue #4: Matrix A and Matrix B** (Cao)
+### Create the Python environment
 
-- **Issue #5: Matrix C** (Shang)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-## 📅 Key Milestones
+If `python3` is not found, install Python from your Linux distribution first.
 
-- **May 1**: Block diagram and interface description defined.
-- **May 15**: Code and Documentation - Tests fully defined.
-- **June 12**: Demonstration - RTL design successfully running on FPGA.
-- **July 3**: Code and Documentation - Specifications fulfilled for ASIC (gate-level).
-- **July 17**: Final deliverable - All source files, documentation, and presentation.
+## Run locally
+If Verilator is missing, install it with your package manager. On Debian or Ubuntu, for example:
+
+```bash
+sudo apt install verilator
+```
+
+On Fedora:
+
+```bash
+sudo dnf install verilator
+```
+
+## GitLab workflow
+This project should not be pushed directly to the `main` branch. Create a branch for your work and open a merge request.
+
+Recommended flow:
+1. Create or pick a GitLab issue first.
+2. Create a branch for that issue.
+3. Open a merge request from that branch.
+4. Ask at least one other user to approve the MR before merging.
+
+Use the issue and MR linking guide in [docs/GITLAB_ISSUE_LINKING.md](docs/GITLAB_ISSUE_LINKING.md).
+
+Recommended branch naming:
+
+```bash
+git checkout -b 2-mac-unit-pipeline-fix
+```
+
+This makes it easier for GitLab to link the branch to the related issue.
+
+In the MR description, link the issue explicitly. A common pattern is:
+
+```markdown
+Closes #2
+```
+
+It is better to create the issue before the MR so the branch, discussion, and review all stay connected to one work item.
+
+## CI and pre-commit
+This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
+- convention checks
+- `black --check .`
+- `.gitkeep` validation
+- cocotb simulation through Verilator
+
+Pre-commit hooks are also configured for local use. They run:
+- `black`
+- `python scripts/check_conventions.py`
+- `python scripts/check_gitkeep.py`
+
+Install and enable pre-commit if you want the same checks before every commit:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Run it manually when needed:
+
+```bash
+pre-commit run --all-files
+```
+
+## Troubleshooting
+- If `python3` or `pip` is missing, install Python from your Linux distribution.
+- If the virtual environment does not activate, check that you are using a Linux shell.
+- If Verilator is missing, install it before running the simulation tests.
+- If a check fails, read the first error message first; it usually points to the real problem.
