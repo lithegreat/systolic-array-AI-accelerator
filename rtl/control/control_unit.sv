@@ -41,14 +41,6 @@ module control_unit
     input  logic [7:0]               ss_ctrl_4,
     output logic                     irq_4,
 
-    // Matrix A/B/C external addressing (kept for interface; tied off in v1)
-    output logic [MATRIX_AW-1:0]     matrix_a_addr,
-    output logic                     matrix_a_ren,
-    output logic [MATRIX_AW-1:0]     matrix_b_addr,
-    output logic                     matrix_b_ren,
-    output logic [MATRIX_AW-1:0]     matrix_c_addr,
-    output logic                     matrix_c_wen,
-
     // Systolic array control
     output logic                     array_start,
     output logic                     array_clear,
@@ -68,16 +60,6 @@ module control_unit
     logic rst_n;
     assign clk   = clk_in;
     assign rst_n = ~reset_int;
-
-    // -------------------------------------------------------------------------
-    // Tie unused legacy address ports
-    // -------------------------------------------------------------------------
-    assign matrix_a_addr = '0;
-    assign matrix_a_ren  = 1'b0;
-    assign matrix_b_addr = '0;
-    assign matrix_b_ren  = 1'b0;
-    assign matrix_c_addr = '0;
-    assign matrix_c_wen  = 1'b0;
 
     // -------------------------------------------------------------------------
     // Register file

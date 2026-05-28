@@ -1,0 +1,3 @@
+[submodule "Didactic-SoC"]
+	path = Didactic-SoC
+	url = https://github.com/Edu4Chip/Didactic-SoC
