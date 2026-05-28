@@ -15,9 +15,9 @@ module accelerator_top
 #(
     parameter int unsigned DATA_W = 16,
     parameter int unsigned ACC_W  = 32,
-    parameter int unsigned M      = 4,
-    parameter int unsigned N      = 4,
-    parameter int unsigned K      = 4,
+    parameter int unsigned M      = 16,
+    parameter int unsigned N      = 16,
+    parameter int unsigned K      = 16,
     parameter int unsigned APB_AW = 10,
     parameter int unsigned APB_DW = 32
 ) (
@@ -72,12 +72,9 @@ module accelerator_top
     logic                array_start;
     logic                array_clear;
     logic                array_done;
-    logic [APB_DW-1:0]   cfg_m, cfg_n, cfg_k;
-    logic                soft_reset_unused;
 
     logic                mat_valid;
     logic                sys_ready;
-    logic                mat_done;
     logic [M*DATA_W-1:0] a_col;
     logic [N*DATA_W-1:0] b_row;
 
@@ -86,12 +83,6 @@ module accelerator_top
     logic [ACC_W-1:0]    c_data;
     logic [$clog2((M>1)?M:2)-1:0] c_row;
     logic [$clog2((N>1)?N:2)-1:0] c_col;
-
-    logic                cap_full;
-
-    // Unused legacy outputs from control_unit
-    logic [9:0]          ma_addr, mb_addr, mc_addr;
-    logic                ma_ren, mb_ren, mc_wen;
 
     // -------------------------------------------------------------------------
     // control_unit
@@ -114,19 +105,9 @@ module accelerator_top
         .irq_en_4     (irq_en_4),
         .ss_ctrl_4    (ss_ctrl_4),
         .irq_4        (irq_4),
-        .matrix_a_addr(ma_addr),
-        .matrix_a_ren (ma_ren),
-        .matrix_b_addr(mb_addr),
-        .matrix_b_ren (mb_ren),
-        .matrix_c_addr(mc_addr),
-        .matrix_c_wen (mc_wen),
         .array_start  (array_start),
         .array_clear  (array_clear),
-        .array_done   (array_done),
-        .cfg_m_dim    (cfg_m),
-        .cfg_n_dim    (cfg_n),
-        .cfg_k_dim    (cfg_k),
-        .soft_reset   (soft_reset_unused)
+        .array_done   (array_done)
     );
 
     // -------------------------------------------------------------------------
@@ -151,7 +132,6 @@ module accelerator_top
         .PREADY   (ready_ab),
         .PSLVERR  (err_ab),
         .mat_start(array_start),
-        .mat_done (mat_done),
         .mat_valid(mat_valid),
         .sys_ready(sys_ready),
         .a_col    (a_col),
@@ -206,16 +186,9 @@ module accelerator_top
         .PREADY      (ready_c),
         .PSLVERR     (err_c),
         .c_in_valid  (out_valid),
-        .c_in_ready  (), // unused; out_ready forced to 1
         .c_data_in   (c_data),
         .c_row_in    (c_row),
-        .c_col_in    (c_col),
-        .capture_full(cap_full)
+        .c_col_in    (c_col)
     );
-
-    // Unused: prevent lint warnings.
-    logic _unused;
-    assign _unused = |{cfg_m, cfg_n, cfg_k, soft_reset_unused, mat_done,
-                       ma_addr, mb_addr, mc_addr, ma_ren, mb_ren, mc_wen, cap_full};
 
 endmodule

@@ -14,8 +14,8 @@
 // -----------------------------------------------------------------------------
 module matrix_buffer_c #(
     parameter int unsigned ACC_W  = 32,
-    parameter int unsigned M      = 4,
-    parameter int unsigned N      = 4,
+    parameter int unsigned M      = 16,
+    parameter int unsigned N      = 16,
     parameter int unsigned APB_AW = 10,
     parameter int unsigned APB_DW = 32
 ) (
@@ -34,13 +34,9 @@ module matrix_buffer_c #(
 
     // Capture from systolic array
     input  logic                       c_in_valid,
-    output logic                       c_in_ready,
     input  logic [ACC_W-1:0]           c_data_in,
     input  logic [$clog2((M>1)?M:2)-1:0] c_row_in,
-    input  logic [$clog2((N>1)?N:2)-1:0] c_col_in,
-
-    // Status
-    output logic                       capture_full
+    input  logic [$clog2((N>1)?N:2)-1:0] c_col_in
 );
 
     localparam int unsigned C_DEPTH = M * N;
@@ -50,6 +46,8 @@ module matrix_buffer_c #(
     logic [PTR_W-1:0] r_ptr;
     logic [PTR_W-1:0] capture_count;
 
+    logic c_in_ready;
+    logic capture_full;
     assign c_in_ready   = (capture_count < C_DEPTH);
     assign capture_full = (capture_count >= C_DEPTH);
 

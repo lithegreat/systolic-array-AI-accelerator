@@ -89,9 +89,9 @@ async def test_register_rw(dut) -> None:
     apb = CtrlApb(dut)
 
     # Defaults match accel_pkg defaults.
-    assert (await apb.read(REG_M_DIM)) == 4
-    assert (await apb.read(REG_N_DIM)) == 4
-    assert (await apb.read(REG_K_DIM)) == 4
+    assert (await apb.read(REG_M_DIM)) == 16
+    assert (await apb.read(REG_N_DIM)) == 16
+    assert (await apb.read(REG_K_DIM)) == 16
 
     await apb.write(REG_M_DIM, 8)
     await apb.write(REG_N_DIM, 16)
