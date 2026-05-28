@@ -13,8 +13,8 @@ from cocotb.triggers import RisingEdge, Timer
 from apb_bfm import ApbMaster
 from golden import to_signed, to_unsigned
 
-M = int(os.environ.get("M", "4"))
-N = int(os.environ.get("N", "4"))
+M = int(os.environ.get("M", "16"))
+N = int(os.environ.get("N", "16"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 APB_DW = 32
 

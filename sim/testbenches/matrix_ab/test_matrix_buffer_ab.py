@@ -13,9 +13,9 @@ from cocotb.triggers import RisingEdge, Timer
 from apb_bfm import ApbMaster
 from golden import pack_words, random_matrix, to_signed, to_unsigned
 
-M = int(os.environ.get("M", "4"))
-N = int(os.environ.get("N", "4"))
-K = int(os.environ.get("K", "4"))
+M = int(os.environ.get("M", "16"))
+N = int(os.environ.get("N", "16"))
+K = int(os.environ.get("K", "16"))
 DATA_W = int(os.environ.get("DATA_W", "16"))
 APB_DW = 32
 EPW = APB_DW // DATA_W

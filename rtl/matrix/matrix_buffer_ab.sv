@@ -20,9 +20,9 @@
 // -----------------------------------------------------------------------------
 module matrix_buffer_ab #(
     parameter int unsigned DATA_W = 16,
-    parameter int unsigned M      = 4,
-    parameter int unsigned N      = 4,
-    parameter int unsigned K      = 4,
+    parameter int unsigned M      = 16,
+    parameter int unsigned N      = 16,
+    parameter int unsigned K      = 16,
     parameter int unsigned APB_AW = 10,
     parameter int unsigned APB_DW = 32
 ) (

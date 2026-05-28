@@ -14,8 +14,8 @@
 // -----------------------------------------------------------------------------
 module matrix_buffer_c #(
     parameter int unsigned ACC_W  = 32,
-    parameter int unsigned M      = 4,
-    parameter int unsigned N      = 4,
+    parameter int unsigned M      = 16,
+    parameter int unsigned N      = 16,
     parameter int unsigned APB_AW = 10,
     parameter int unsigned APB_DW = 32
 ) (
