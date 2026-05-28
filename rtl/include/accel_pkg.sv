@@ -13,9 +13,9 @@ package accel_pkg;
     // -------------------------------------------------------------------------
     // Sizing
     // -------------------------------------------------------------------------
-    localparam int unsigned DEF_M       = 4;   // C/A row count
-    localparam int unsigned DEF_N       = 4;   // C/B col count
-    localparam int unsigned DEF_K       = 4;   // reduction depth
+    localparam int unsigned DEF_M       = 16;  // C/A row count
+    localparam int unsigned DEF_N       = 16;  // C/B col count
+    localparam int unsigned DEF_K       = 16;  // reduction depth
     localparam int unsigned DEF_DATA_W  = 16;  // signed input width
     localparam int unsigned DEF_ACC_W   = 32;  // accumulator width
 

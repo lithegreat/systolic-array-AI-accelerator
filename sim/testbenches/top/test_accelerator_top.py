@@ -20,9 +20,9 @@ from cocotb.triggers import RisingEdge, Timer
 
 from golden import matmul_ref, pack_words, random_matrix, to_signed, to_unsigned
 
-M = int(os.environ.get("M", "4"))
-N = int(os.environ.get("N", "4"))
-K = int(os.environ.get("K", "4"))
+M = int(os.environ.get("M", "16"))
+N = int(os.environ.get("N", "16"))
+K = int(os.environ.get("K", "16"))
 DATA_W = int(os.environ.get("DATA_W", "16"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 
@@ -108,7 +108,7 @@ async def run_matmul(dut, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
 
     # Poll STATUS.done.
-    for _ in range(500):
+    for _ in range(2000):
         s = await apb_read(dut, CTRL_BASE | REG_STATUS)
         if s & STATUS_DONE:
             break
