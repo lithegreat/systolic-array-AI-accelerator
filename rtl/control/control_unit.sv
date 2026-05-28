@@ -44,13 +44,7 @@ module control_unit
     // Systolic array control
     output logic                     array_start,
     output logic                     array_clear,
-    input  logic                     array_done,
-
-    // Exposed register-file values (for top-level wiring)
-    output logic [APB_DW-1:0]        cfg_m_dim,
-    output logic [APB_DW-1:0]        cfg_n_dim,
-    output logic [APB_DW-1:0]        cfg_k_dim,
-    output logic                     soft_reset
+    input  logic                     array_done
 );
 
     // -------------------------------------------------------------------------
@@ -71,11 +65,6 @@ module control_unit
     logic [APB_DW-1:0] reg_k_dim;
     logic [APB_DW-1:0] reg_int_en;
     logic [APB_DW-1:0] reg_int_stat;
-
-    assign cfg_m_dim  = reg_m_dim;
-    assign cfg_n_dim  = reg_n_dim;
-    assign cfg_k_dim  = reg_k_dim;
-    assign soft_reset = reg_ctrl[CTRL_SOFTRST_BIT];
 
     // -------------------------------------------------------------------------
     // APB transaction qualification
