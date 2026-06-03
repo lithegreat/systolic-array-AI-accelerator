@@ -10,6 +10,79 @@ It does not implement matrix storage or compute itself. Instead, it routes softw
 
 ## 2. Block Diagrams
 
+### 2.0 Full Architecture Overview
+
+```mermaid
+flowchart TB
+   subgraph SoC["SoC / APB Master"]
+      direction LR
+      apb_m["APB Master"]
+      soc_irq["irq_en_4 / ss_ctrl_4 / irq_4"]
+   end
+
+   subgraph TOP["accelerator_top"]
+      direction TB
+
+      decode{{"PADDR[9:8]\nAddress Decode / Mux"}}
+
+      subgraph CTRL["control_unit"]
+         direction TB
+         regs["Register File\nCTRL · STATUS\nM/N/K_DIM\nINT_EN · INT_STAT"]
+         fsm["FSM\nIDLE → ISSUE → BUSY → DONE"]
+         regs <--> fsm
+      end
+
+      subgraph AB["matrix_buffer_ab"]
+         direction TB
+         mem_a["Matrix A Storage\nM × K elements\n(row-major)"]
+         mem_b["Matrix B Storage\nK × N elements\n(row-major)"]
+         streamer["K-beat Streamer\na_col / b_row"]
+         mem_a --> streamer
+         mem_b --> streamer
+      end
+
+      subgraph ARRAY["systolic_array  (M × N PEs)"]
+         direction TB
+         skew["Input Skew\nShift Chains"]
+         pes["PE Grid\n(output-stationary\naccumulators)"]
+         drain["Result Drain\n(row-major order)"]
+         skew --> pes --> drain
+      end
+
+      subgraph C["matrix_buffer_c"]
+         direction TB
+         mem_c["Matrix C Capture\nM × N elements\n(row-major)"]
+      end
+
+      decode <-- "PADDR[7:0] / PRDATA\nPREADY / PSLVERR" --> CTRL
+      decode <-- "PADDR[7:0] / PRDATA\nPREADY / PSLVERR" --> AB
+      decode <-- "PADDR[7:0] / PRDATA\nPREADY / PSLVERR" --> C
+
+      fsm -- "array_start\narray_clear" --> streamer
+      fsm -- "array_start\narray_clear" --> ARRAY
+      drain -- "array_done" --> fsm
+
+      streamer -- "mat_valid\na_col [M×DATA_W]\nb_row [N×DATA_W]" --> skew
+      skew -- "sys_ready" --> streamer
+
+      drain -- "out_valid\nc_data / c_row / c_col" --> mem_c
+      mem_c -- "c_in_ready" --> drain
+   end
+
+   apb_m -- "PADDR / PSEL / PENABLE\nPWRITE / PWDATA" --> decode
+   decode -- "PRDATA / PREADY / PSLVERR" --> apb_m
+
+   soc_irq -- "irq_en_4\nss_ctrl_4" --> CTRL
+   fsm -- "irq_4" --> soc_irq
+
+   style SoC fill:#f5f5f5,stroke:#999
+   style TOP fill:#e8f4fd,stroke:#4a90d9
+   style CTRL fill:#e1f5ff,stroke:#0288d1
+   style AB fill:#c8e6c9,stroke:#388e3c
+   style ARRAY fill:#bbdefb,stroke:#1976d2
+   style C fill:#fff9c4,stroke:#f9a825
+```
+
 ### 2.1 APB Routing and Address Decode
 
 ```mermaid
