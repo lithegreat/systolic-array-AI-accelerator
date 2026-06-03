@@ -41,24 +41,10 @@ module control_unit
     input  logic [7:0]               ss_ctrl_4,
     output logic                     irq_4,
 
-    // Matrix A/B/C external addressing (kept for interface; tied off in v1)
-    output logic [MATRIX_AW-1:0]     matrix_a_addr,
-    output logic                     matrix_a_ren,
-    output logic [MATRIX_AW-1:0]     matrix_b_addr,
-    output logic                     matrix_b_ren,
-    output logic [MATRIX_AW-1:0]     matrix_c_addr,
-    output logic                     matrix_c_wen,
-
     // Systolic array control
     output logic                     array_start,
     output logic                     array_clear,
-    input  logic                     array_done,
-
-    // Exposed register-file values (for top-level wiring)
-    output logic [APB_DW-1:0]        cfg_m_dim,
-    output logic [APB_DW-1:0]        cfg_n_dim,
-    output logic [APB_DW-1:0]        cfg_k_dim,
-    output logic                     soft_reset
+    input  logic                     array_done
 );
 
     // -------------------------------------------------------------------------
@@ -70,16 +56,6 @@ module control_unit
     assign rst_n = ~reset_int;
 
     // -------------------------------------------------------------------------
-    // Tie unused legacy address ports
-    // -------------------------------------------------------------------------
-    assign matrix_a_addr = '0;
-    assign matrix_a_ren  = 1'b0;
-    assign matrix_b_addr = '0;
-    assign matrix_b_ren  = 1'b0;
-    assign matrix_c_addr = '0;
-    assign matrix_c_wen  = 1'b0;
-
-    // -------------------------------------------------------------------------
     // Register file
     // -------------------------------------------------------------------------
     logic [APB_DW-1:0] reg_ctrl;
@@ -89,11 +65,6 @@ module control_unit
     logic [APB_DW-1:0] reg_k_dim;
     logic [APB_DW-1:0] reg_int_en;
     logic [APB_DW-1:0] reg_int_stat;
-
-    assign cfg_m_dim  = reg_m_dim;
-    assign cfg_n_dim  = reg_n_dim;
-    assign cfg_k_dim  = reg_k_dim;
-    assign soft_reset = reg_ctrl[CTRL_SOFTRST_BIT];
 
     // -------------------------------------------------------------------------
     // APB transaction qualification

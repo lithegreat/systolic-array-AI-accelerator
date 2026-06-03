@@ -13,8 +13,8 @@ from cocotb.triggers import RisingEdge, Timer
 from apb_bfm import ApbMaster
 from golden import to_signed, to_unsigned
 
-M = int(os.environ.get("M", "4"))
-N = int(os.environ.get("N", "4"))
+M = int(os.environ.get("M", "16"))
+N = int(os.environ.get("N", "16"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 APB_DW = 32
 
@@ -68,6 +68,37 @@ async def test_capture_then_readout(dut) -> None:
             ref = expected[(i, j)]
             ref_u = to_unsigned(ref, ACC_W) & ((1 << APB_DW) - 1)
             assert word == ref_u, f"C[{i},{j}] dut=0x{word:x} ref=0x{ref_u:x}"
+
+
+@cocotb.test()
+async def test_ctrl_read_capture_full_flag(dut) -> None:
+    """Read CTRL register: full flag (bit 1) should be 0 initially, 1 after M*N captures."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Before any captures: full flag must be 0.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert not (ctrl_val & 0x2), (
+        f"capture_full should be 0 initially, got 0x{ctrl_val:x}"
+    )
+
+    # Inject exactly M*N values to fill the buffer.
+    for i in range(M):
+        for j in range(N):
+            dut.c_data_in.value = i * N + j
+            dut.c_row_in.value = i
+            dut.c_col_in.value = j
+            dut.c_in_valid.value = 1
+            await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # After M*N captures: full flag must be 1.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, (
+        f"capture_full should be 1 after {M * N} captures, got 0x{ctrl_val:x}"
+    )
 
 
 @cocotb.test()

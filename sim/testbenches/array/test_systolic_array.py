@@ -13,9 +13,9 @@ from cocotb.triggers import RisingEdge, Timer
 from golden import matmul_ref, random_matrix, to_signed, to_unsigned
 from golden_array import expected_drain
 
-M = int(os.environ.get("M", "4"))
-N = int(os.environ.get("N", "4"))
-K = int(os.environ.get("K", "4"))
+M = int(os.environ.get("M", "16"))
+N = int(os.environ.get("N", "16"))
+K = int(os.environ.get("K", "16"))
 DATA_W = int(os.environ.get("DATA_W", "16"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 

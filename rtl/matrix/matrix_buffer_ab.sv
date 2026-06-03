@@ -20,9 +20,9 @@
 // -----------------------------------------------------------------------------
 module matrix_buffer_ab #(
     parameter int unsigned DATA_W = 16,
-    parameter int unsigned M      = 4,
-    parameter int unsigned N      = 4,
-    parameter int unsigned K      = 4,
+    parameter int unsigned M      = 16,
+    parameter int unsigned N      = 16,
+    parameter int unsigned K      = 16,
     parameter int unsigned APB_AW = 10,
     parameter int unsigned APB_DW = 32
 ) (
@@ -41,7 +41,6 @@ module matrix_buffer_ab #(
 
     // Streaming control
     input  logic                       mat_start,
-    output logic                       mat_done,
     output logic                       mat_valid,
     input  logic                       sys_ready,
 
@@ -132,7 +131,6 @@ module matrix_buffer_ab #(
     logic [K_W-1:0] k_q;
 
     assign mat_valid = (s_q == S_RUN);
-    assign mat_done  = (s_q == S_DONE);
 
     always_comb begin
         s_d = s_q;

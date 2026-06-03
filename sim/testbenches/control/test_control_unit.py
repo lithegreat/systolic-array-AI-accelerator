@@ -89,9 +89,9 @@ async def test_register_rw(dut) -> None:
     apb = CtrlApb(dut)
 
     # Defaults match accel_pkg defaults.
-    assert (await apb.read(REG_M_DIM)) == 4
-    assert (await apb.read(REG_N_DIM)) == 4
-    assert (await apb.read(REG_K_DIM)) == 4
+    assert (await apb.read(REG_M_DIM)) == 16
+    assert (await apb.read(REG_N_DIM)) == 16
+    assert (await apb.read(REG_K_DIM)) == 16
 
     await apb.write(REG_M_DIM, 8)
     await apb.write(REG_N_DIM, 16)
@@ -165,3 +165,36 @@ async def test_soft_reset(dut) -> None:
     status = await apb.read(REG_STATUS)
     assert not (status & STATUS_BUSY), f"soft reset should clear BUSY: 0x{status:x}"
     assert not (status & STATUS_DONE), f"soft reset should clear DONE: 0x{status:x}"
+
+
+@cocotb.test()
+async def test_read_ctrl_and_int_stat_registers(dut) -> None:
+    """Read REG_CTRL, REG_INT_STAT, and an unmapped address to hit the read-mux default."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    # Read REG_CTRL (should be 0 after reset, start bit self-clears).
+    ctrl_val = await apb.read(REG_CTRL)
+    assert ctrl_val == 0, f"REG_CTRL after reset should be 0, got 0x{ctrl_val:x}"
+
+    # Run a complete start->done cycle to set INT_STAT.
+    await apb.write(REG_INT_EN, 0x1)
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+
+    # Read REG_INT_STAT: INT_DONE_BIT should be set.
+    int_stat = await apb.read(REG_INT_STAT)
+    assert int_stat & 0x1, (
+        f"REG_INT_STAT should have bit 0 set after done, got 0x{int_stat:x}"
+    )
+
+    # Read an unmapped address (e.g. 0xFC) → default branch returns 0.
+    unmapped = await apb.read(0xFC)
+    assert unmapped == 0, f"unmapped read should return 0, got 0x{unmapped:x}"

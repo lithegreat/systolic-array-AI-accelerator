@@ -20,9 +20,9 @@ from cocotb.triggers import RisingEdge, Timer
 
 from golden import matmul_ref, pack_words, random_matrix, to_signed, to_unsigned
 
-M = int(os.environ.get("M", "4"))
-N = int(os.environ.get("N", "4"))
-K = int(os.environ.get("K", "4"))
+M = int(os.environ.get("M", "16"))
+N = int(os.environ.get("N", "16"))
+K = int(os.environ.get("K", "16"))
 DATA_W = int(os.environ.get("DATA_W", "16"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 
@@ -108,7 +108,7 @@ async def run_matmul(dut, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
 
     # Poll STATUS.done.
-    for _ in range(500):
+    for _ in range(2000):
         s = await apb_read(dut, CTRL_BASE | REG_STATUS)
         if s & STATUS_DONE:
             break
@@ -127,16 +127,35 @@ async def run_matmul(dut, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return c
 
 
+def pad_to_hw(mat: np.ndarray, hw_rows: int, hw_cols: int) -> np.ndarray:
+    """Zero-pad a matrix to the hardware tile dimensions."""
+    r, c = mat.shape
+    out = np.zeros((hw_rows, hw_cols), dtype=mat.dtype)
+    out[:r, :c] = mat
+    return out
+
+
+async def run_submatmul(
+    dut, a_sub: np.ndarray, b_sub: np.ndarray, m: int, n: int, k: int
+) -> np.ndarray:
+    """Run a (m x k) @ (k x n) matmul on the 16x16 HW via zero-padding.
+
+    Returns only the meaningful (m x n) top-left block of the result.
+    """
+    a_hw = pad_to_hw(a_sub, M, K)
+    b_hw = pad_to_hw(b_sub, K, N)
+    c_hw = await run_matmul(dut, a_hw, b_hw)
+    return c_hw[:m, :n]
+
+
 @cocotb.test()
 async def test_top_random_matmul(dut) -> None:
     cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
     await reset_top(dut)
 
     rng = random.Random(0x1234)
-    # Use a small dynamic range so 32-bit APB readout matches the full
-    # accumulator value (no truncation needed).
     for trial in range(3):
-        a = random_matrix(M, K, 8, rng).astype(np.int64)  # use 8-bit signed values
+        a = random_matrix(M, K, 8, rng).astype(np.int64)
         b = random_matrix(K, N, 8, rng).astype(np.int64)
         ref = matmul_ref(a, b, ACC_W)
         got = await run_matmul(dut, a, b)
@@ -159,3 +178,148 @@ async def test_top_identity(dut) -> None:
     ref = matmul_ref(a, b, ACC_W)
     got = await run_matmul(dut, a, b)
     assert np.array_equal(got, ref), f"identity mismatch:\nref=\n{ref}\ngot=\n{got}"
+
+
+@cocotb.test()
+async def test_top_4x4_matmul(dut) -> None:
+    """4x4 matrix multiply on 16x16 HW via zero-padding, 8-bit inputs."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    dim = 4
+    rng = random.Random(0x4444)
+    for trial in range(3):
+        a = random_matrix(dim, dim, 8, rng).astype(np.int64)
+        b = random_matrix(dim, dim, 8, rng).astype(np.int64)
+        ref = matmul_ref(a, b, ACC_W)
+        got = await run_submatmul(dut, a, b, dim, dim, dim)
+        if not np.array_equal(got, ref):
+            cocotb.log.error(f"4x4 trial {trial}: mismatch")
+            cocotb.log.error(f"ref=\n{ref}")
+            cocotb.log.error(f"got=\n{got}")
+            raise AssertionError(f"4x4 matmul mismatch on trial {trial}")
+
+
+@cocotb.test()
+async def test_top_8x8_matmul(dut) -> None:
+    """8x8 matrix multiply on 16x16 HW via zero-padding, 8-bit inputs."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    dim = 8
+    rng = random.Random(0x8888)
+    for trial in range(3):
+        a = random_matrix(dim, dim, 8, rng).astype(np.int64)
+        b = random_matrix(dim, dim, 8, rng).astype(np.int64)
+        ref = matmul_ref(a, b, ACC_W)
+        got = await run_submatmul(dut, a, b, dim, dim, dim)
+        if not np.array_equal(got, ref):
+            cocotb.log.error(f"8x8 trial {trial}: mismatch")
+            cocotb.log.error(f"ref=\n{ref}")
+            cocotb.log.error(f"got=\n{got}")
+            raise AssertionError(f"8x8 matmul mismatch on trial {trial}")
+
+
+@cocotb.test()
+async def test_top_4bit_inputs(dut) -> None:
+    """16x16 matmul with 4-bit signed inputs sign-extended to 16-bit."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    rng = random.Random(0x0004)
+    for trial in range(3):
+        a = random_matrix(M, K, 4, rng).astype(np.int64)
+        b = random_matrix(K, N, 4, rng).astype(np.int64)
+        ref = matmul_ref(a, b, ACC_W)
+        got = await run_matmul(dut, a, b)
+        if not np.array_equal(got, ref):
+            cocotb.log.error(f"4-bit trial {trial}: mismatch")
+            raise AssertionError(f"4-bit input matmul mismatch on trial {trial}")
+
+
+@cocotb.test()
+async def test_top_8bit_inputs(dut) -> None:
+    """16x16 matmul with 8-bit signed inputs sign-extended to 16-bit."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    rng = random.Random(0x0008)
+    for trial in range(3):
+        a = random_matrix(M, K, 8, rng).astype(np.int64)
+        b = random_matrix(K, N, 8, rng).astype(np.int64)
+        ref = matmul_ref(a, b, ACC_W)
+        got = await run_matmul(dut, a, b)
+        if not np.array_equal(got, ref):
+            cocotb.log.error(f"8-bit trial {trial}: mismatch")
+            raise AssertionError(f"8-bit input matmul mismatch on trial {trial}")
+
+
+@cocotb.test()
+async def test_top_4x4_4bit(dut) -> None:
+    """4x4 matmul with 4-bit inputs on 16x16 HW."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    dim = 4
+    rng = random.Random(0x0044)
+    a = random_matrix(dim, dim, 4, rng).astype(np.int64)
+    b = random_matrix(dim, dim, 4, rng).astype(np.int64)
+    ref = matmul_ref(a, b, ACC_W)
+    got = await run_submatmul(dut, a, b, dim, dim, dim)
+    assert np.array_equal(got, ref), f"4x4 4-bit mismatch:\nref=\n{ref}\ngot=\n{got}"
+
+
+@cocotb.test()
+async def test_top_8x8_4bit(dut) -> None:
+    """8x8 matmul with 4-bit inputs on 16x16 HW."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    dim = 8
+    rng = random.Random(0x0084)
+    a = random_matrix(dim, dim, 4, rng).astype(np.int64)
+    b = random_matrix(dim, dim, 4, rng).astype(np.int64)
+    ref = matmul_ref(a, b, ACC_W)
+    got = await run_submatmul(dut, a, b, dim, dim, dim)
+    assert np.array_equal(got, ref), f"8x8 4-bit mismatch:\nref=\n{ref}\ngot=\n{got}"
+
+
+REG_INT_EN = 0x10
+REG_INT_STAT = 0x14
+
+
+@cocotb.test()
+async def test_top_irq_path(dut) -> None:
+    """Exercise irq_en_4/ss_ctrl_4/irq_4 toggle and the interrupt register path."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    # Drive ss_ctrl_4 to a non-zero value (toggles the port).
+    dut.ss_ctrl_4.value = 0xAB
+
+    # Enable the done-interrupt inside the control unit.
+    await apb_write(dut, CTRL_BASE | REG_INT_EN, 0x1)
+
+    # Enable the SoC-level IRQ gate.
+    dut.irq_en_4.value = 1
+
+    # Run a minimal 1-element identity matmul to trigger done.
+    rng = random.Random(0xABC0)
+    a = random_matrix(1, 1, 8, rng).astype(np.int64)
+    b = random_matrix(1, 1, 8, rng).astype(np.int64)
+    await run_matmul(dut, a, b)
+
+    # irq_4 should now be high (interrupt fired).
+    assert int(dut.irq_4.value) == 1, (
+        "irq_4 should be asserted after done with irq_en_4=1"
+    )
+
+    # Clear the interrupt via W1C on INT_STAT.
+    await apb_write(dut, CTRL_BASE | REG_INT_STAT, 0x1)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+    assert int(dut.irq_4.value) == 0, "irq_4 should deassert after W1C on INT_STAT"
+
+    # Restore irq_en_4 low (toggles back).
+    dut.irq_en_4.value = 0
+    dut.ss_ctrl_4.value = 0

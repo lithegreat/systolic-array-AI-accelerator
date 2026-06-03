@@ -170,6 +170,57 @@ Closes #2
 
 It is better to create the issue before the MR so the branch, discussion, and review all stay connected to one work item.
 
+## Running simulations and viewing coverage
+
+All cocotb testbenches are driven by a single pytest entry point:
+
+```bash
+source .venv/bin/activate
+pytest sim/test_runner.py -v
+```
+
+This runs every per-module Makefile under `sim/testbenches/` (array, control, mac, matrix\_ab, matrix\_c, top) and then produces a functional coverage report.
+
+### Functional RTL coverage
+
+Verilator is invoked with `--coverage` (configured in `sim/scripts/Makefile.common`).
+After all testbenches complete, `test_coverage_report` in `sim/test_runner.py` runs
+`verilator_coverage` to:
+
+- Print a summary line (`Total coverage (N/334)`) to the terminal.
+- Write annotated RTL sources to `sim/coverage_annotated/` — lines prefixed with
+  `%00` were never executed.
+- Write `sim/coverage.info` in lcov format for the
+  [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters)
+  VS Code extension.
+
+To view coverage highlights in the editor:
+1. Open any RTL file (e.g. `rtl/top/accelerator_top.sv`).
+2. Open the Command Palette (`Ctrl+Shift+P`) → **Coverage Gutters: Display Coverage**.
+
+Green gutter marks indicate executed lines; red marks indicate unexecuted lines.
+
+Run only the coverage report (against existing `coverage.dat` files) without re-running simulations:
+
+```bash
+pytest sim/test_runner.py::test_coverage_report -v -s
+```
+
+### Current coverage baseline
+
+As of June 2026 the aggregate line coverage across all RTL modules is **80 %** (269 / 334 lines).
+
+| Module | Uncovered lines | Notes |
+|---|---|---|
+| `accelerator_top.sv` | 1 | `PSLVERR` (tied-zero, never asserted) |
+| `control_unit.sv` | 2 | `unique case` FSM default branch (unreachable by design) |
+| `matrix_buffer_ab.sv` | 2 | `unique case` FSM default + `PSLVERR` |
+| `matrix_buffer_c.sv` | 1 | `PSLVERR` (tied-zero) |
+| `systolic_array.sv` | 1 | `unique case` FSM default (unreachable by design) |
+
+Remaining gaps are either ports tied to constant zero (`PSLVERR`) or `unique case` default
+branches that require an illegal FSM state to fire. Both are intentional design constraints.
+
 ## CI and pre-commit
 This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
 - convention checks
