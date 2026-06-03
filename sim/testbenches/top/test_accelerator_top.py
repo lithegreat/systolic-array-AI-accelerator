@@ -284,7 +284,7 @@ async def test_top_8x8_4bit(dut) -> None:
     assert np.array_equal(got, ref), f"8x8 4-bit mismatch:\nref=\n{ref}\ngot=\n{got}"
 
 
-REG_INT_EN   = 0x10
+REG_INT_EN = 0x10
 REG_INT_STAT = 0x14
 
 
@@ -310,7 +310,9 @@ async def test_top_irq_path(dut) -> None:
     await run_matmul(dut, a, b)
 
     # irq_4 should now be high (interrupt fired).
-    assert int(dut.irq_4.value) == 1, "irq_4 should be asserted after done with irq_en_4=1"
+    assert int(dut.irq_4.value) == 1, (
+        "irq_4 should be asserted after done with irq_en_4=1"
+    )
 
     # Clear the interrupt via W1C on INT_STAT.
     await apb_write(dut, CTRL_BASE | REG_INT_STAT, 0x1)

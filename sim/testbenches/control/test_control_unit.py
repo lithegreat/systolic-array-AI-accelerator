@@ -191,7 +191,9 @@ async def test_read_ctrl_and_int_stat_registers(dut) -> None:
 
     # Read REG_INT_STAT: INT_DONE_BIT should be set.
     int_stat = await apb.read(REG_INT_STAT)
-    assert int_stat & 0x1, f"REG_INT_STAT should have bit 0 set after done, got 0x{int_stat:x}"
+    assert int_stat & 0x1, (
+        f"REG_INT_STAT should have bit 0 set after done, got 0x{int_stat:x}"
+    )
 
     # Read an unmapped address (e.g. 0xFC) → default branch returns 0.
     unmapped = await apb.read(0xFC)
