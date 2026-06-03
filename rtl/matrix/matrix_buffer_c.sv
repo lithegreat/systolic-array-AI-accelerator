@@ -1,9 +1,9 @@
 // -----------------------------------------------------------------------------
 // matrix_buffer_c.sv -- Matrix-C output buffer.
 //
-// Captures one (c_data, c_row, c_col) per cycle when c_in_valid is high
-// (always-ready). Provides APB read-back at offset 0x00 with auto-incrementing
-// read pointer; control bits at offset 0x80.
+// Captures one full C row (N accumulators in c_row_data_in) per cycle when
+// c_in_valid is high (always-ready). Provides APB read-back at offset 0x00 with
+// auto-incrementing read pointer; control bits at offset 0x80.
 //
 // APB map (offsets):
 //   0x00 MAT_C_DATA (R/O) : read packed elements from C, auto-increment.
@@ -12,7 +12,11 @@
 // Storage layout: row-major C[i,j] -> offset i*N + j.
 // Each ACC_W-wide accumulator value is exposed truncated/zero-extended to APB_DW.
 // -----------------------------------------------------------------------------
-module matrix_buffer_c #(
+`include "accel_pkg.sv"
+
+module matrix_buffer_c
+    import accel_pkg::*;
+#(
     parameter int unsigned ACC_W  = 32,
     parameter int unsigned M      = 16,
     parameter int unsigned N      = 16,
@@ -32,46 +36,49 @@ module matrix_buffer_c #(
     output logic                       PREADY,
     output logic                       PSLVERR,
 
-    // Capture from systolic array
+    // Capture from systolic array (one full C row per beat)
     input  logic                       c_in_valid,
-    input  logic [ACC_W-1:0]           c_data_in,
-    input  logic [$clog2((M>1)?M:2)-1:0] c_row_in,
-    input  logic [$clog2((N>1)?N:2)-1:0] c_col_in
+    input  logic [N*ACC_W-1:0]         c_row_data_in,
+    input  logic [$clog2((M>1)?M:2)-1:0] c_row_in
 );
 
     localparam int unsigned C_DEPTH = M * N;
     localparam int unsigned PTR_W   = (C_DEPTH > 1) ? $clog2(C_DEPTH + 1) : 1;
+    localparam int unsigned ROW_W   = (M > 1) ? $clog2(M + 1) : 1;
 
     logic [ACC_W-1:0] mem_c [C_DEPTH];
     logic [PTR_W-1:0] r_ptr;
-    logic [PTR_W-1:0] capture_count;
+    logic [ROW_W-1:0] rows_captured;   // number of C rows captured
 
     logic c_in_ready;
     logic capture_full;
-    assign c_in_ready   = (capture_count < C_DEPTH);
-    assign capture_full = (capture_count >= C_DEPTH);
+    assign c_in_ready   = (rows_captured < M);
+    assign capture_full = (rows_captured >= M);
 
     logic apb_access;
     assign apb_access = PSEL && PENABLE;
     assign PREADY     = 1'b1;
-    assign PSLVERR    = 1'b0;
 
     logic sel_data, sel_ctrl;
-    assign sel_data = (PADDR[7:0] == 8'h00);
-    assign sel_ctrl = (PADDR[7:0] == 8'h80);
+    assign sel_data = (PADDR[7:0] == MAT_C_DATA_OFF);
+    assign sel_ctrl = (PADDR[7:0] == MAT_C_CTRL_OFF);
+
+    // Flag reads past the captured C window as an error.
+    assign PSLVERR    = apb_access && !PWRITE && sel_data && (r_ptr >= C_DEPTH[PTR_W-1:0]);
 
     // -------------------------------------------------------------------------
-    // Capture path
+    // Capture path: write all N columns of the incoming row in one cycle.
     // -------------------------------------------------------------------------
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            capture_count <= '0;
-            for (int i = 0; i < C_DEPTH; i++) mem_c[i] <= '0;
+            rows_captured <= '0;
         end else if (apb_access && PWRITE && sel_ctrl && PWDATA[0]) begin
-            capture_count <= '0;
+            rows_captured <= '0;
         end else if (c_in_valid && c_in_ready) begin
-            mem_c[c_row_in * N + c_col_in] <= c_data_in;
-            capture_count <= capture_count + 1'b1;
+            for (int j = 0; j < N; j++) begin
+                mem_c[c_row_in * N + j] <= c_row_data_in[j*ACC_W +: ACC_W];
+            end
+            rows_captured <= rows_captured + 1'b1;
         end
     end
 

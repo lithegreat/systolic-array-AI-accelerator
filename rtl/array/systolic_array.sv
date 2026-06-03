@@ -16,9 +16,9 @@
 //     running, the array asserts `in_ready` for the first K cycles and
 //     consumes (a_col, b_row) on every (in_valid && in_ready) cycle.
 //   * After M + N + K - 2 cycles of computation, the array switches to
-//     drain mode: one (c_data, c_row, c_col) output per accepted cycle
-//     (out_valid && out_ready), row-major sweep.
-//   * `done` pulses for one cycle after the last C element is accepted.
+//     drain mode: one full C row (N accumulators packed into c_row_data) is
+//     emitted per accepted cycle (out_valid && out_ready), top row first.
+//   * `done` pulses for one cycle after the last C row is accepted.
 // -----------------------------------------------------------------------------
 module systolic_array #(
     parameter int unsigned DATA_W = 16,
@@ -39,24 +39,22 @@ module systolic_array #(
     input  logic [M*DATA_W-1:0]               a_col,
     input  logic [N*DATA_W-1:0]               b_row,
 
-    // Streaming output (one C element per beat).
+    // Streaming output (one full C row, N accumulators, per beat).
     output logic                              out_valid,
     input  logic                              out_ready,
-    output logic [ACC_W-1:0]                  c_data,
-    output logic [$clog2(M)-1:0]              c_row,
-    output logic [$clog2(N)-1:0]              c_col
+    output logic [N*ACC_W-1:0]                c_row_data,
+    output logic [((M>1)?$clog2(M):1)-1:0]    c_row
 );
 
     // -------------------------------------------------------------------------
     // Sizing constants
     // -------------------------------------------------------------------------
     localparam int unsigned COMPUTE_CYCLES = M + N + K - 2; // last cycle index = COMPUTE_CYCLES-1
-    localparam int unsigned DRAIN_COUNT    = M * N;
+    localparam int unsigned DRAIN_COUNT    = M;             // one row emitted per beat
     localparam int unsigned T_W            = $clog2(COMPUTE_CYCLES + 1);
     localparam int unsigned K_W            = $clog2(K + 1);
     localparam int unsigned D_W            = $clog2(DRAIN_COUNT + 1);
     localparam int unsigned ROW_W          = (M > 1) ? $clog2(M) : 1;
-    localparam int unsigned COL_W          = (N > 1) ? $clog2(N) : 1;
 
     // -------------------------------------------------------------------------
     // FSM
@@ -153,39 +151,19 @@ module systolic_array #(
         end
     endgenerate
 
-    // Row 0 has zero delay; row i has an i-deep shift register.
+    // Row i feed delayed by i cycles; col j feed delayed by j cycles.
     generate
         for (gi = 0; gi < M; gi++) begin : g_a_skew
-            if (gi == 0) begin : g_a_skew_zero
-                assign a_west[gi] = a_feed[gi];
-            end else begin : g_a_skew_chain
-                logic signed [DATA_W-1:0] sr [gi];
-                always_ff @(posedge clk) begin
-                    if (!rst_n) begin
-                        for (int d = 0; d < gi; d++) sr[d] <= '0;
-                    end else if (step) begin
-                        sr[0] <= a_feed[gi];
-                        for (int d = 1; d < gi; d++) sr[d] <= sr[d-1];
-                    end
-                end
-                assign a_west[gi] = sr[gi-1];
-            end
+            skew_shift #(.W(DATA_W), .DEPTH(gi)) u_a_skew (
+                .clk(clk), .rst_n(rst_n), .step(step),
+                .d_in(a_feed[gi]), .d_out(a_west[gi])
+            );
         end
         for (gj = 0; gj < N; gj++) begin : g_b_skew
-            if (gj == 0) begin : g_b_skew_zero
-                assign b_north[gj] = b_feed[gj];
-            end else begin : g_b_skew_chain
-                logic signed [DATA_W-1:0] sr [gj];
-                always_ff @(posedge clk) begin
-                    if (!rst_n) begin
-                        for (int d = 0; d < gj; d++) sr[d] <= '0;
-                    end else if (step) begin
-                        sr[0] <= b_feed[gj];
-                        for (int d = 1; d < gj; d++) sr[d] <= sr[d-1];
-                    end
-                end
-                assign b_north[gj] = sr[gj-1];
-            end
+            skew_shift #(.W(DATA_W), .DEPTH(gj)) u_b_skew (
+                .clk(clk), .rst_n(rst_n), .step(step),
+                .d_in(b_feed[gj]), .d_out(b_north[gj])
+            );
         end
     endgenerate
 
@@ -235,35 +213,30 @@ module systolic_array #(
     endgenerate
 
     // -------------------------------------------------------------------------
-    // Drain logic: row-major sweep of pe_out[i][j]
+    // Drain logic: emit one full C row (N accumulators) per beat, top row
+    // first. Works for any M, N (no power-of-two restriction).
     // -------------------------------------------------------------------------
-    // NOTE: assumes M and N are powers of two; assertion below catches misuse.
-    // synopsys translate_off
-    initial begin
-        assert ((M & (M-1)) == 0) else
-            $fatal(1, "systolic_array: M (%0d) must be a power of two for drain decoding", M);
-        assert ((N & (N-1)) == 0) else
-            $fatal(1, "systolic_array: N (%0d) must be a power of two for drain decoding", N);
-    end
-    // synopsys translate_on
+    logic [ROW_W-1:0] drain_row_q;
 
-    logic [ROW_W-1:0] drain_row;
-    logic [COL_W-1:0] drain_col;
-    generate
-        if (M == 1) begin : g_drain_row_one
-            assign drain_row = '0;
-        end else begin : g_drain_row_n
-            assign drain_row = d_cnt_q[ROW_W+COL_W-1 : COL_W];
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            drain_row_q <= '0;
+        end else if (state_q == S_IDLE && start) begin
+            drain_row_q <= '0;
+        end else if (state_q == S_DONE) begin
+            drain_row_q <= '0;
+        end else if (accept_out) begin
+            drain_row_q <= drain_row_q + 1'b1;
         end
-        if (N == 1) begin : g_drain_col_one
-            assign drain_col = '0;
-        end else begin : g_drain_col_n
-            assign drain_col = d_cnt_q[COL_W-1 : 0];
+    end
+
+    // Pack the selected row's N accumulators LSB-first (column 0 in low bits).
+    generate
+        for (gj = 0; gj < N; gj++) begin : g_drain_pack
+            assign c_row_data[(gj+1)*ACC_W-1 -: ACC_W] = pe_out[drain_row_q][gj];
         end
     endgenerate
 
-    assign c_row = drain_row;
-    assign c_col = drain_col;
-    assign c_data = pe_out[drain_row][drain_col];
+    assign c_row = drain_row_q;
 
 endmodule

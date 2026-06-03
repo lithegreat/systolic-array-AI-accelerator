@@ -14,9 +14,9 @@ Issue #3.
     in_ready <-------|      systolic_array       |<----- out_ready
                      |       (M=4, N=4, K=4)     |-----> done
                      |                           |
-      a_data =======>|                           |=======> c_data
+      a_data =======>|                           |=======> c_row_data
       b_data =======>|                           |=======> c_row
-                     |                           |=======> c_col
+                     |                           |
                      +---------------------------+
                            ^       ^
                            |       |
@@ -39,7 +39,7 @@ flowchart LR
       direction TB
       skew["Input Skew\nShift Chains\n(row i delayed i cycles\ncol j delayed j cycles)"]
       grid["PE Grid\nM × N mac_pe\n(output-stationary\naccumulators)"]
-      drain["Result Drain\nrow-major order\nM×N beats"]
+      drain["Result Drain\none full C row per beat\nM beats"]
       skew --> grid --> drain
    end
 
@@ -48,9 +48,8 @@ flowchart LR
       irdy_o(["in_ready"])
       ov_o(["out_valid"])
       done_o(["done"])
-      cdata_o(["c_data\n[ACC_W-1:0]"])
+      cdata_o(["c_row_data\n[N×ACC_W-1:0]"])
       crow_o(["c_row\n[log2(M)-1:0]"])
-      ccol_o(["c_col\n[log2(N)-1:0]"])
    end
 
    start_i --> SA
@@ -66,7 +65,6 @@ flowchart LR
    drain -- "done\n(1-cycle pulse)" --> done_o
    drain --> cdata_o
    drain --> crow_o
-   drain --> ccol_o
 
    style SA fill:#bbdefb,stroke:#1976d2
    style INPUTS fill:#f5f5f5,stroke:#999
@@ -100,18 +98,18 @@ where `in_valid && in_ready`, both `a_col` and `b_row` are consumed.
 - `b_row[N*DATA_W-1:0]`: packed signed row vector from Matrix B for the current `k`.
 
 ### Data Outputs
-For each cycle where `out_valid && out_ready`, one C element is produced with
-its row/col indices.
+For each cycle where `out_valid && out_ready`, one full C row is produced with
+its row index. The array drains `M` beats total (top row first).
 
-- `c_data[ACC_W-1:0]`: signed accumulation result.
-- `c_row[$clog2(M)-1:0]`: row index of `c_data`.
-- `c_col[$clog2(N)-1:0]`: col index of `c_data`.
+- `c_row_data[N*ACC_W-1:0]`: packed signed accumulation results for the row
+  (column 0 in the low bits, column `N-1` in the high bits).
+- `c_row[$clog2(M)-1:0]`: row index of `c_row_data`.
 
 ### Output-Stationary Dataflow
 - Each PE owns one `C[i,j]` accumulator.
 - One input beat supplies the whole A column `A[:,k]` and the whole B row `B[k,:]`.
 - Internal skew shift chains delay row `i` by `i` cycles and column `j` by `j` cycles.
-- Each PE accumulates for exactly `K` valid windows, then the array drains results in row-major order.
+- Each PE accumulates for exactly `K` valid windows, then the array drains results one row per beat in top-to-bottom order.
 
 ### Timing Notes (Handshake)
 - `start` is sampled in `IDLE` and launches one tile.
@@ -119,12 +117,12 @@ its row/col indices.
 	stalled and must be held stable.
 - `out_valid` may remain high across cycles; if `out_ready` is low, outputs are
 	stalled and must be held stable.
-- `done` asserts for one cycle after the last `(c_row, c_col)` is accepted.
+- `done` asserts for one cycle after the last C row is accepted.
 - The compute phase lasts `M + N + K - 2` internal pipeline cycles before drain starts.
 
 ### Assumptions
 - Matrix A/B modules provide one aligned pair `(a_col, b_row)` per accepted beat.
-- One output element is produced per cycle when ready, after pipeline latency.
+- One output row (N elements) is produced per cycle when ready, after pipeline latency.
 
 ### Notes
 - The current implementation drains `C` in row-major order.

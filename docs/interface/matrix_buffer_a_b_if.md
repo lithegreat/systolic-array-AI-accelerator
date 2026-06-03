@@ -93,8 +93,8 @@ flowchart TB
 | `PWRITE` | Input | `1` | APB write enable |
 | `PWDATA` | Input | `APB_DW` | APB write data |
 | `PRDATA` | Output | `APB_DW` | APB read data |
-| `PREADY` | Output | `1` | Always asserted in v1 |
-| `PSLVERR` | Output | `1` | Always deasserted in v1 |
+| `PREADY` | Output | `1` | Always asserted (zero-wait) |
+| `PSLVERR` | Output | `1` | Asserted on an A/B write when the target bank write pointer is already at capacity (overflow); deasserted otherwise |
 
 ### 3.2 Streaming Interface
 
