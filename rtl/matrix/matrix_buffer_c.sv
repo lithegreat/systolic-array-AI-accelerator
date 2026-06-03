@@ -12,7 +12,11 @@
 // Storage layout: row-major C[i,j] -> offset i*N + j.
 // Each ACC_W-wide accumulator value is exposed truncated/zero-extended to APB_DW.
 // -----------------------------------------------------------------------------
-module matrix_buffer_c #(
+`include "accel_pkg.sv"
+
+module matrix_buffer_c
+    import accel_pkg::*;
+#(
     parameter int unsigned ACC_W  = 32,
     parameter int unsigned M      = 16,
     parameter int unsigned N      = 16,
@@ -54,11 +58,12 @@ module matrix_buffer_c #(
     logic apb_access;
     assign apb_access = PSEL && PENABLE;
     assign PREADY     = 1'b1;
-    assign PSLVERR    = 1'b0;
+    // Flag reads past the captured C window as an error.
+    assign PSLVERR    = apb_access && !PWRITE && sel_data && (r_ptr >= C_DEPTH[PTR_W-1:0]);
 
     logic sel_data, sel_ctrl;
-    assign sel_data = (PADDR[7:0] == 8'h00);
-    assign sel_ctrl = (PADDR[7:0] == 8'h80);
+    assign sel_data = (PADDR[7:0] == MAT_C_DATA_OFF);
+    assign sel_ctrl = (PADDR[7:0] == MAT_C_CTRL_OFF);
 
     // -------------------------------------------------------------------------
     // Capture path
@@ -66,7 +71,6 @@ module matrix_buffer_c #(
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             capture_count <= '0;
-            for (int i = 0; i < C_DEPTH; i++) mem_c[i] <= '0;
         end else if (apb_access && PWRITE && sel_ctrl && PWDATA[0]) begin
             capture_count <= '0;
         end else if (c_in_valid && c_in_ready) begin

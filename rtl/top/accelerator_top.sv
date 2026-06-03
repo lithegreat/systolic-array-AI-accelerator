@@ -89,8 +89,7 @@ module accelerator_top
     // -------------------------------------------------------------------------
     control_unit #(
         .APB_AW   (APB_AW),
-        .APB_DW   (APB_DW),
-        .MATRIX_AW(10)
+        .APB_DW   (APB_DW)
     ) u_control (
         .clk_in       (clk_in),
         .reset_int    (reset_int),
