@@ -282,3 +282,44 @@ async def test_top_8x8_4bit(dut) -> None:
     ref = matmul_ref(a, b, ACC_W)
     got = await run_submatmul(dut, a, b, dim, dim, dim)
     assert np.array_equal(got, ref), f"8x8 4-bit mismatch:\nref=\n{ref}\ngot=\n{got}"
+
+
+REG_INT_EN = 0x10
+REG_INT_STAT = 0x14
+
+
+@cocotb.test()
+async def test_top_irq_path(dut) -> None:
+    """Exercise irq_en_4/ss_ctrl_4/irq_4 toggle and the interrupt register path."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    # Drive ss_ctrl_4 to a non-zero value (toggles the port).
+    dut.ss_ctrl_4.value = 0xAB
+
+    # Enable the done-interrupt inside the control unit.
+    await apb_write(dut, CTRL_BASE | REG_INT_EN, 0x1)
+
+    # Enable the SoC-level IRQ gate.
+    dut.irq_en_4.value = 1
+
+    # Run a minimal 1-element identity matmul to trigger done.
+    rng = random.Random(0xABC0)
+    a = random_matrix(1, 1, 8, rng).astype(np.int64)
+    b = random_matrix(1, 1, 8, rng).astype(np.int64)
+    await run_matmul(dut, a, b)
+
+    # irq_4 should now be high (interrupt fired).
+    assert int(dut.irq_4.value) == 1, (
+        "irq_4 should be asserted after done with irq_en_4=1"
+    )
+
+    # Clear the interrupt via W1C on INT_STAT.
+    await apb_write(dut, CTRL_BASE | REG_INT_STAT, 0x1)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+    assert int(dut.irq_4.value) == 0, "irq_4 should deassert after W1C on INT_STAT"
+
+    # Restore irq_en_4 low (toggles back).
+    dut.irq_en_4.value = 0
+    dut.ss_ctrl_4.value = 0

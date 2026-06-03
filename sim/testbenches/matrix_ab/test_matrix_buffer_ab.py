@@ -132,3 +132,27 @@ async def test_ctrl_reset_pointer(dut) -> None:
     for k, bus in enumerate(captured):
         for i in range(M):
             assert lane(bus, i, DATA_W) == int(a[i, k])
+
+
+@cocotb.test()
+async def test_ctrl_read_full_flags(dut) -> None:
+    """Read CTRL register: A-full (bit 1) and B-full (bit 2) after filling both matrices."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Before loading: both flags must be 0.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert not (ctrl_val & 0x6), f"full flags should be 0 initially, got 0x{ctrl_val:x}"
+
+    # Fill A (M*K elements) and B (K*N elements).
+    rng = random.Random(0xF011)
+    a = random_matrix(M, K, DATA_W, rng)
+    b = random_matrix(K, N, DATA_W, rng)
+    await write_matrix(apb, OFF_A, list(a.flatten()))
+    await write_matrix(apb, OFF_B, list(b.flatten()))
+
+    # After filling: A-full (bit 1) and B-full (bit 2) must both be set.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"A-full flag (bit 1) should be set, got 0x{ctrl_val:x}"
+    assert ctrl_val & 0x4, f"B-full flag (bit 2) should be set, got 0x{ctrl_val:x}"
