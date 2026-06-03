@@ -4,7 +4,7 @@
 
 `matrix_buffer_c` captures the drained outputs of the systolic array and stores them in row-major order for software read-back over APB.
 
-Each accepted element is identified by `(c_row_in, c_col_in)` and written to linear address `c_row_in * N + c_col_in`.
+The array drains a full C row per beat: each accepted beat carries row index `c_row_in` and the packed row `c_row_data_in` (N accumulators, column 0 in the low bits). All N columns of that row are written to linear addresses `c_row_in * N + j` for `j = 0..N-1` in one cycle.
 
 ## 1.1 Block Diagram
 
@@ -13,16 +13,15 @@ flowchart TB
    subgraph CAPTURE_IN["Capture Interface (from systolic_array)"]
       direction LR
       cv_i(["c_in_valid"])
-      cd_i(["c_data_in\n[ACC_W-1:0]"])
+      cd_i(["c_row_data_in\n[N*ACC_W-1:0]"])
       cr_i(["c_row_in\n[log2(M)-1:0]"])
-      cc_i(["c_col_in\n[log2(N)-1:0]"])
    end
 
    subgraph MC["matrix_buffer_c"]
       direction TB
-      addr_calc["Address Calc\nc_row_in × N + c_col_in"]
+      addr_calc["Address Calc\nc_row_in × N + j"]
       mem_c["Matrix C Storage\nM × N elements\nACC_W bits each\n(row-major)"]
-      cap_cnt["Capture Counter\n(0 → M×N = full)"]
+      cap_cnt["Row Counter\n(0 → M = full)"]
       rd_ptr["Read Pointer\nauto-increment on APB read"]
       decode_apb{{"APB Decode\n0x00 → read MAT_C_DATA\n0x80 → MAT_CTRL"}}
 
@@ -50,7 +49,6 @@ flowchart TB
    cv_i --> addr_calc
    cd_i --> mem_c
    cr_i --> addr_calc
-   cc_i --> addr_calc
    cap_cnt --> cr_o
    cap_cnt --> cf_o
 
@@ -97,12 +95,11 @@ flowchart TB
 
 | Port | Direction | Width | Description |
 | :--- | :--- | :--- | :--- |
-| `c_in_valid` | Input | `1` | Incoming C element valid |
-| `c_in_ready` | Output | `1` | Capture ready; deasserts once the buffer is full |
-| `c_data_in` | Input | `ACC_W` | Captured C element value |
-| `c_row_in` | Input | `$clog2(max(M,2))` | Row index of `c_data_in` |
-| `c_col_in` | Input | `$clog2(max(N,2))` | Column index of `c_data_in` |
-| `capture_full` | Output | `1` | High when `M*N` elements have been accepted since last reset |
+| `c_in_valid` | Input | `1` | Incoming C row valid |
+| `c_in_ready` | Output | `1` | Capture ready; deasserts once all M rows are captured |
+| `c_row_data_in` | Input | `N*ACC_W` | Packed C row (N accumulators, column 0 in the low bits) |
+| `c_row_in` | Input | `$clog2(max(M,2))` | Row index of `c_row_data_in` |
+| `capture_full` | Output | `1` | High when all `M` rows have been accepted since last reset |
 
 ## 4. Register Map
 
@@ -114,6 +111,6 @@ flowchart TB
 ## 5. Behavior
 
 - Storage order is row-major: `C[i,j]` is read back in the order `(0,0)`, `(0,1)`, ..., `(M-1,N-1)`.
-- `c_in_ready` is high until `M*N` elements have been accepted.
+- `c_in_ready` is high until all `M` rows have been accepted.
 - Reading `MAT_C_DATA` returns the low `APB_DW` bits of the stored `ACC_W` value.
-- Writing `1` to `MAT_CTRL[0]` resets both the read pointer and the full/capture count state.
+- Writing `1` to `MAT_CTRL[0]` resets both the read pointer and the full/row-count state.
