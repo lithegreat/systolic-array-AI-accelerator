@@ -79,7 +79,9 @@ async def test_ctrl_read_capture_full_flag(dut) -> None:
 
     # Before any captures: full flag must be 0.
     ctrl_val = await apb.read(OFF_CTRL)
-    assert not (ctrl_val & 0x2), f"capture_full should be 0 initially, got 0x{ctrl_val:x}"
+    assert not (ctrl_val & 0x2), (
+        f"capture_full should be 0 initially, got 0x{ctrl_val:x}"
+    )
 
     # Inject exactly M*N values to fill the buffer.
     for i in range(M):
@@ -94,7 +96,9 @@ async def test_ctrl_read_capture_full_flag(dut) -> None:
 
     # After M*N captures: full flag must be 1.
     ctrl_val = await apb.read(OFF_CTRL)
-    assert ctrl_val & 0x2, f"capture_full should be 1 after {M*N} captures, got 0x{ctrl_val:x}"
+    assert ctrl_val & 0x2, (
+        f"capture_full should be 1 after {M * N} captures, got 0x{ctrl_val:x}"
+    )
 
 
 @cocotb.test()

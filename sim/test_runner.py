@@ -68,10 +68,14 @@ def test_coverage_report() -> None:
     result = subprocess.run(
         [
             "verilator_coverage",
-            "--annotate", str(annotate_dir),
-            "--annotate-min", "1",
-            "--write-info", str(lcov_info),
-        ] + [str(f) for f in dat_files],
+            "--annotate",
+            str(annotate_dir),
+            "--annotate-min",
+            "1",
+            "--write-info",
+            str(lcov_info),
+        ]
+        + [str(f) for f in dat_files],
         check=False,
         capture_output=True,
         text=True,
@@ -82,6 +86,8 @@ def test_coverage_report() -> None:
     if result.stderr:
         print(result.stderr)
     print(f"\nAnnotated source written to: {annotate_dir}")
-    print(f"lcov info written to: {lcov_info}  (open an RTL file and run 'Coverage Gutters: Display Coverage')")
+    print(
+        f"lcov info written to: {lcov_info}  (open an RTL file and run 'Coverage Gutters: Display Coverage')"
+    )
     if result.returncode != 0:
         raise AssertionError(f"verilator_coverage failed (exit={result.returncode})")
