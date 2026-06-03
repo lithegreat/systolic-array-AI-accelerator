@@ -21,6 +21,57 @@ Issue #3.
                            ^       ^
                            |       |
                           clk    rst_n
+
+```mermaid
+flowchart LR
+   subgraph INPUTS["Inputs"]
+      direction TB
+      clk_i(["clk"])
+      rst_i(["rst_n"])
+      start_i(["start"])
+      inv_i(["in_valid"])
+      acol_i(["a_col\n[M×DATA_W-1:0]"])
+      brow_i(["b_row\n[N×DATA_W-1:0]"])
+      ordy_i(["out_ready"])
+   end
+
+   subgraph SA["systolic_array  (M × N PEs)"]
+      direction TB
+      skew["Input Skew\nShift Chains\n(row i delayed i cycles\ncol j delayed j cycles)"]
+      grid["PE Grid\nM × N mac_pe\n(output-stationary\naccumulators)"]
+      drain["Result Drain\nrow-major order\nM×N beats"]
+      skew --> grid --> drain
+   end
+
+   subgraph OUTPUTS["Outputs"]
+      direction TB
+      irdy_o(["in_ready"])
+      ov_o(["out_valid"])
+      done_o(["done"])
+      cdata_o(["c_data\n[ACC_W-1:0]"])
+      crow_o(["c_row\n[log2(M)-1:0]"])
+      ccol_o(["c_col\n[log2(N)-1:0]"])
+   end
+
+   start_i --> SA
+   inv_i -- "valid beat" --> skew
+   acol_i --> skew
+   brow_i --> skew
+   ordy_i --> drain
+   clk_i --> SA
+   rst_i --> SA
+
+   skew -- "in_ready" --> irdy_o
+   drain -- "out_valid" --> ov_o
+   drain -- "done\n(1-cycle pulse)" --> done_o
+   drain --> cdata_o
+   drain --> crow_o
+   drain --> ccol_o
+
+   style SA fill:#bbdefb,stroke:#1976d2
+   style INPUTS fill:#f5f5f5,stroke:#999
+   style OUTPUTS fill:#f5f5f5,stroke:#999
+```
                           
 ### Parameters
 - `DATA_W` (default 16): data/weight bit-width, signed integer.
