@@ -19,8 +19,7 @@ module control_unit
     import accel_pkg::*;
 #(
     parameter int unsigned APB_AW    = 10,
-    parameter int unsigned APB_DW    = 32,
-    parameter int unsigned MATRIX_AW = 10
+    parameter int unsigned APB_DW    = 32
 ) (
     // System clock and reset
     input  logic                     clk_in,
@@ -192,4 +191,4 @@ module control_unit
     logic _unused_ss;
     assign _unused_ss = |ss_ctrl_4;
 
-endmodule;
+endmodule

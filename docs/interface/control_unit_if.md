@@ -82,7 +82,6 @@ The control unit provides the APB-visible register file for the accelerator and 
 | --- | --- | --- |
 | `APB_AW` | `10` | APB address width |
 | `APB_DW` | `32` | APB data width |
-| `MATRIX_AW` | `10` | Legacy matrix address width for compatibility ports |
 
 ### Ports
 

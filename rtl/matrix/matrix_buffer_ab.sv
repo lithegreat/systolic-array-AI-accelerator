@@ -18,7 +18,11 @@
 //   * On every (mat_valid && sys_ready) edge, advance to next k.
 //   * After K beats, mat_valid drops; mat_done pulses one cycle.
 // -----------------------------------------------------------------------------
-module matrix_buffer_ab #(
+`include "accel_pkg.sv"
+
+module matrix_buffer_ab
+    import accel_pkg::*;
+#(
     parameter int unsigned DATA_W = 16,
     parameter int unsigned M      = 16,
     parameter int unsigned N      = 16,
@@ -70,13 +74,18 @@ module matrix_buffer_ab #(
     logic apb_access;
     assign apb_access = PSEL && PENABLE;
     assign PREADY     = 1'b1;
-    assign PSLVERR    = 1'b0;
 
-    // Decode by upper address bits (offset 0x00, 0x40, 0x80)
+    // Decode by local offset (from accel_pkg)
     logic sel_a, sel_b, sel_ctrl;
-    assign sel_a    = (PADDR[7:0] == 8'h00);
-    assign sel_b    = (PADDR[7:0] == 8'h40);
-    assign sel_ctrl = (PADDR[7:0] == 8'h80);
+    assign sel_a    = (PADDR[7:0] == MAT_A_DATA_OFF);
+    assign sel_b    = (PADDR[7:0] == MAT_B_DATA_OFF);
+    assign sel_ctrl = (PADDR[7:0] == MAT_AB_CTRL_OFF);
+
+    // Flag writes that would push past a bank's capacity so software
+    // over-runs surface instead of being silently dropped.
+    assign PSLVERR    = apb_access && PWRITE &&
+                        ((sel_a && (a_wptr >= A_DEPTH[A_PTR_W-1:0])) ||
+                         (sel_b && (b_wptr >= B_DEPTH[B_PTR_W-1:0])));
 
     // -------------------------------------------------------------------------
     // APB write logic (zero-wait)
