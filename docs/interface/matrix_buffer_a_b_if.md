@@ -8,6 +8,66 @@ The implementation is fixed-geometry per build (`M`, `N`, `K` parameters) and st
 - `A[i,k]` at linear offset `i*K + k`
 - `B[k,j]` at linear offset `k*N + j`
 
+## 1.1 Block Diagram
+
+```mermaid
+flowchart TB
+   subgraph APB_IN["APB Interface (Write Path)"]
+      direction LR
+      paddr(["PADDR[7:0]"])
+      psel(["PSEL / PENABLE"])
+      pwrite(["PWRITE / PWDATA"])
+   end
+
+   subgraph MAB["matrix_buffer_ab"]
+      direction TB
+      decode_apb{{"APB Decode\n0x00 → A\n0x40 → B\n0x80 → CTRL"}}
+      mem_a["Matrix A Storage\nM × K elements\nrow-major\nA[i,k] @ i*K+k"]
+      mem_b["Matrix B Storage\nK × N elements\nrow-major\nB[k,j] @ k*N+j"]
+      wp_a["Write Ptr A\nauto-increment"]
+      wp_b["Write Ptr B\nauto-increment"]
+      streamer["K-beat Streamer\nbeat k:\na_col[i] = A[i,k]\nb_row[j] = B[k,j]"]
+
+      decode_apb --> wp_a --> mem_a --> streamer
+      decode_apb --> wp_b --> mem_b --> streamer
+   end
+
+   subgraph APB_OUT["APB Read Back"]
+      prdata_o(["PRDATA\nPREADY / PSLVERR"])
+   end
+
+   subgraph STREAM_IN["Streaming Control"]
+      mat_start_i(["mat_start\n(1-cycle pulse)"])
+      sys_ready_i(["sys_ready"])
+   end
+
+   subgraph STREAM_OUT["Streaming Output"]
+      mat_valid_o(["mat_valid"])
+      mat_done_o(["mat_done\n(1-cycle pulse)"])
+      acol_o(["a_col\n[M×DATA_W-1:0]"])
+      brow_o(["b_row\n[N×DATA_W-1:0]"])
+   end
+
+   paddr --> decode_apb
+   psel --> decode_apb
+   pwrite --> decode_apb
+   decode_apb --> prdata_o
+
+   mat_start_i --> streamer
+   sys_ready_i --> streamer
+
+   streamer --> mat_valid_o
+   streamer --> mat_done_o
+   streamer --> acol_o
+   streamer --> brow_o
+
+   style MAB fill:#c8e6c9,stroke:#388e3c
+   style APB_IN fill:#f5f5f5,stroke:#999
+   style APB_OUT fill:#f5f5f5,stroke:#999
+   style STREAM_IN fill:#fff9c4,stroke:#f9a825
+   style STREAM_OUT fill:#fff9c4,stroke:#f9a825
+```
+
 ## 2. Parameters
 
 | Parameter Name | Default Value | Description |

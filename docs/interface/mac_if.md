@@ -16,6 +16,54 @@
                                 |       |       |
                                clk    rst_n     en
 
+```mermaid
+flowchart LR
+   subgraph INPUTS["Inputs"]
+      direction TB
+      clk_in(["clk"])
+      rst_in(["rst_n"])
+      en_in(["en"])
+      a_in(["a_in\n[DATA_W-1:0]"])
+      b_in(["b_in\n[DATA_W-1:0]"])
+      clear_in(["clear_acc"])
+   end
+
+   subgraph PE["mac_pe"]
+      direction TB
+      mul["Signed Multiply\na_in × b_in"]
+      acc["Accumulator\nACC_W bits\n(+ or clear)"]
+      reg_a["FF\na_out reg"]
+      reg_b["FF\nb_out reg"]
+      mul --> acc
+      a_in_int(( )) --> mul
+      b_in_int(( )) --> mul
+      a_in_int --> reg_a
+      b_in_int --> reg_b
+   end
+
+   subgraph OUTPUTS["Outputs"]
+      direction TB
+      a_out(["a_out\n[DATA_W-1:0]"])
+      b_out(["b_out\n[DATA_W-1:0]"])
+      pe_out(["pe_out\n[ACC_W-1:0]"])
+   end
+
+   a_in -- "systolic\npass-through" --> a_in_int
+   b_in -- "systolic\npass-through" --> b_in_int
+   clear_in --> acc
+   en_in --> PE
+   clk_in --> PE
+   rst_in --> PE
+
+   reg_a --> a_out
+   reg_b --> b_out
+   acc --> pe_out
+
+   style PE fill:#bbdefb,stroke:#1976d2
+   style INPUTS fill:#f5f5f5,stroke:#999
+   style OUTPUTS fill:#f5f5f5,stroke:#999
+```
+
 
 ### Parameters
 - `DATA_W` (default 16): Bit-width for signed input data and weights.
