@@ -153,39 +153,19 @@ module systolic_array #(
         end
     endgenerate
 
-    // Row 0 has zero delay; row i has an i-deep shift register.
+    // Row i feed delayed by i cycles; col j feed delayed by j cycles.
     generate
         for (gi = 0; gi < M; gi++) begin : g_a_skew
-            if (gi == 0) begin : g_a_skew_zero
-                assign a_west[gi] = a_feed[gi];
-            end else begin : g_a_skew_chain
-                logic signed [DATA_W-1:0] sr [gi];
-                always_ff @(posedge clk) begin
-                    if (!rst_n) begin
-                        for (int d = 0; d < gi; d++) sr[d] <= '0;
-                    end else if (step) begin
-                        sr[0] <= a_feed[gi];
-                        for (int d = 1; d < gi; d++) sr[d] <= sr[d-1];
-                    end
-                end
-                assign a_west[gi] = sr[gi-1];
-            end
+            skew_shift #(.W(DATA_W), .DEPTH(gi)) u_a_skew (
+                .clk(clk), .rst_n(rst_n), .step(step),
+                .d_in(a_feed[gi]), .d_out(a_west[gi])
+            );
         end
         for (gj = 0; gj < N; gj++) begin : g_b_skew
-            if (gj == 0) begin : g_b_skew_zero
-                assign b_north[gj] = b_feed[gj];
-            end else begin : g_b_skew_chain
-                logic signed [DATA_W-1:0] sr [gj];
-                always_ff @(posedge clk) begin
-                    if (!rst_n) begin
-                        for (int d = 0; d < gj; d++) sr[d] <= '0;
-                    end else if (step) begin
-                        sr[0] <= b_feed[gj];
-                        for (int d = 1; d < gj; d++) sr[d] <= sr[d-1];
-                    end
-                end
-                assign b_north[gj] = sr[gj-1];
-            end
+            skew_shift #(.W(DATA_W), .DEPTH(gj)) u_b_skew (
+                .clk(clk), .rst_n(rst_n), .step(step),
+                .d_in(b_feed[gj]), .d_out(b_north[gj])
+            );
         end
     endgenerate
 
@@ -235,35 +215,34 @@ module systolic_array #(
     endgenerate
 
     // -------------------------------------------------------------------------
-    // Drain logic: row-major sweep of pe_out[i][j]
+    // Drain logic: row-major sweep of pe_out[i][j] via explicit row/col
+    // counters (works for any M, N -- no power-of-two restriction).
     // -------------------------------------------------------------------------
-    // NOTE: assumes M and N are powers of two; assertion below catches misuse.
-    // synopsys translate_off
-    initial begin
-        assert ((M & (M-1)) == 0) else
-            $fatal(1, "systolic_array: M (%0d) must be a power of two for drain decoding", M);
-        assert ((N & (N-1)) == 0) else
-            $fatal(1, "systolic_array: N (%0d) must be a power of two for drain decoding", N);
+    logic [ROW_W-1:0] drain_row_q;
+    logic [COL_W-1:0] drain_col_q;
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            drain_row_q <= '0;
+            drain_col_q <= '0;
+        end else if (state_q == S_IDLE && start) begin
+            drain_row_q <= '0;
+            drain_col_q <= '0;
+        end else if (state_q == S_DONE) begin
+            drain_row_q <= '0;
+            drain_col_q <= '0;
+        end else if (accept_out) begin
+            if (drain_col_q == COL_W'(N - 1)) begin
+                drain_col_q <= '0;
+                drain_row_q <= drain_row_q + 1'b1;
+            end else begin
+                drain_col_q <= drain_col_q + 1'b1;
+            end
+        end
     end
-    // synopsys translate_on
 
-    logic [ROW_W-1:0] drain_row;
-    logic [COL_W-1:0] drain_col;
-    generate
-        if (M == 1) begin : g_drain_row_one
-            assign drain_row = '0;
-        end else begin : g_drain_row_n
-            assign drain_row = d_cnt_q[ROW_W+COL_W-1 : COL_W];
-        end
-        if (N == 1) begin : g_drain_col_one
-            assign drain_col = '0;
-        end else begin : g_drain_col_n
-            assign drain_col = d_cnt_q[COL_W-1 : 0];
-        end
-    endgenerate
-
-    assign c_row = drain_row;
-    assign c_col = drain_col;
-    assign c_data = pe_out[drain_row][drain_col];
+    assign c_row  = drain_row_q;
+    assign c_col  = drain_col_q;
+    assign c_data = pe_out[drain_row_q][drain_col_q];
 
 endmodule
