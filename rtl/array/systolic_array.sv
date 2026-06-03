@@ -43,7 +43,7 @@ module systolic_array #(
     output logic                              out_valid,
     input  logic                              out_ready,
     output logic [N*ACC_W-1:0]                c_row_data,
-    output logic [$clog2(M)-1:0]              c_row
+    output logic [((M>1)?$clog2(M):1)-1:0]    c_row
 );
 
     // -------------------------------------------------------------------------
