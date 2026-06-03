@@ -80,9 +80,8 @@ module accelerator_top
 
     logic                out_valid;
     logic                out_ready;
-    logic [ACC_W-1:0]    c_data;
+    logic [N*ACC_W-1:0]  c_row_data;
     logic [$clog2((M>1)?M:2)-1:0] c_row;
-    logic [$clog2((N>1)?N:2)-1:0] c_col;
 
     // -------------------------------------------------------------------------
     // control_unit
@@ -157,9 +156,8 @@ module accelerator_top
         .b_row    (b_row),
         .out_valid(out_valid),
         .out_ready(out_ready),
-        .c_data   (c_data),
-        .c_row    (c_row),
-        .c_col    (c_col)
+        .c_row_data(c_row_data),
+        .c_row    (c_row)
     );
 
     // -------------------------------------------------------------------------
@@ -185,9 +183,8 @@ module accelerator_top
         .PREADY      (ready_c),
         .PSLVERR     (err_c),
         .c_in_valid  (out_valid),
-        .c_data_in   (c_data),
-        .c_row_in    (c_row),
-        .c_col_in    (c_col)
+        .c_row_data_in(c_row_data),
+        .c_row_in    (c_row)
     );
 
 endmodule
