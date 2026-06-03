@@ -23,9 +23,9 @@
 module systolic_array #(
     parameter int unsigned DATA_W = 16,
     parameter int unsigned ACC_W  = 32,
-    parameter int unsigned M      = 4,
-    parameter int unsigned N      = 4,
-    parameter int unsigned K      = 4
+    parameter int unsigned M      = 16,
+    parameter int unsigned N      = 16,
+    parameter int unsigned K      = 16
 ) (
     input  logic                              clk,
     input  logic                              rst_n,
