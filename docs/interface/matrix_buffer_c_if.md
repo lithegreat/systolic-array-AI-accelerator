@@ -30,8 +30,8 @@ Each accepted element is identified by `(c_row_in, c_col_in)` and written to lin
 | `PWRITE` | Input | `1` | APB write enable |
 | `PWDATA` | Input | `APB_DW` | APB write data |
 | `PRDATA` | Output | `APB_DW` | APB read data |
-| `PREADY` | Output | `1` | Always asserted in v1 |
-| `PSLVERR` | Output | `1` | Always deasserted in v1 |
+| `PREADY` | Output | `1` | Always asserted (zero-wait) |
+| `PSLVERR` | Output | `1` | Asserted on a data read once the read pointer has passed the captured C window (over-read); deasserted otherwise |
 
 ### 3.2 Capture Interface
 
