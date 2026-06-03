@@ -16,9 +16,9 @@
 //     running, the array asserts `in_ready` for the first K cycles and
 //     consumes (a_col, b_row) on every (in_valid && in_ready) cycle.
 //   * After M + N + K - 2 cycles of computation, the array switches to
-//     drain mode: one (c_data, c_row, c_col) output per accepted cycle
-//     (out_valid && out_ready), row-major sweep.
-//   * `done` pulses for one cycle after the last C element is accepted.
+//     drain mode: one full C row (N accumulators packed into c_row_data) is
+//     emitted per accepted cycle (out_valid && out_ready), top row first.
+//   * `done` pulses for one cycle after the last C row is accepted.
 // -----------------------------------------------------------------------------
 module systolic_array #(
     parameter int unsigned DATA_W = 16,
@@ -39,24 +39,22 @@ module systolic_array #(
     input  logic [M*DATA_W-1:0]               a_col,
     input  logic [N*DATA_W-1:0]               b_row,
 
-    // Streaming output (one C element per beat).
+    // Streaming output (one full C row, N accumulators, per beat).
     output logic                              out_valid,
     input  logic                              out_ready,
-    output logic [ACC_W-1:0]                  c_data,
-    output logic [$clog2(M)-1:0]              c_row,
-    output logic [$clog2(N)-1:0]              c_col
+    output logic [N*ACC_W-1:0]                c_row_data,
+    output logic [$clog2(M)-1:0]              c_row
 );
 
     // -------------------------------------------------------------------------
     // Sizing constants
     // -------------------------------------------------------------------------
     localparam int unsigned COMPUTE_CYCLES = M + N + K - 2; // last cycle index = COMPUTE_CYCLES-1
-    localparam int unsigned DRAIN_COUNT    = M * N;
+    localparam int unsigned DRAIN_COUNT    = M;             // one row emitted per beat
     localparam int unsigned T_W            = $clog2(COMPUTE_CYCLES + 1);
     localparam int unsigned K_W            = $clog2(K + 1);
     localparam int unsigned D_W            = $clog2(DRAIN_COUNT + 1);
     localparam int unsigned ROW_W          = (M > 1) ? $clog2(M) : 1;
-    localparam int unsigned COL_W          = (N > 1) ? $clog2(N) : 1;
 
     // -------------------------------------------------------------------------
     // FSM
@@ -215,34 +213,30 @@ module systolic_array #(
     endgenerate
 
     // -------------------------------------------------------------------------
-    // Drain logic: row-major sweep of pe_out[i][j] via explicit row/col
-    // counters (works for any M, N -- no power-of-two restriction).
+    // Drain logic: emit one full C row (N accumulators) per beat, top row
+    // first. Works for any M, N (no power-of-two restriction).
     // -------------------------------------------------------------------------
     logic [ROW_W-1:0] drain_row_q;
-    logic [COL_W-1:0] drain_col_q;
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             drain_row_q <= '0;
-            drain_col_q <= '0;
         end else if (state_q == S_IDLE && start) begin
             drain_row_q <= '0;
-            drain_col_q <= '0;
         end else if (state_q == S_DONE) begin
             drain_row_q <= '0;
-            drain_col_q <= '0;
         end else if (accept_out) begin
-            if (drain_col_q == COL_W'(N - 1)) begin
-                drain_col_q <= '0;
-                drain_row_q <= drain_row_q + 1'b1;
-            end else begin
-                drain_col_q <= drain_col_q + 1'b1;
-            end
+            drain_row_q <= drain_row_q + 1'b1;
         end
     end
 
-    assign c_row  = drain_row_q;
-    assign c_col  = drain_col_q;
-    assign c_data = pe_out[drain_row_q][drain_col_q];
+    // Pack the selected row's N accumulators LSB-first (column 0 in low bits).
+    generate
+        for (gj = 0; gj < N; gj++) begin : g_drain_pack
+            assign c_row_data[(gj+1)*ACC_W-1 -: ACC_W] = pe_out[drain_row_q][gj];
+        end
+    endgenerate
+
+    assign c_row = drain_row_q;
 
 endmodule
