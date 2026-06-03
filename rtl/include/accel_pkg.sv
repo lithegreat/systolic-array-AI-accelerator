@@ -30,6 +30,18 @@ package accel_pkg;
     localparam logic [9:0] REG_INT_STAT = 10'h14; // [0]=done irq pending (W1C)
     localparam logic [9:0] REG_K_DIM    = 10'h18; // reduction dimension K
 
+    // -------------------------------------------------------------------------
+    // Matrix buffer local offsets (decoded on PADDR[7:0]) -- single source of
+    // truth for the input/output buffer address maps.
+    // -------------------------------------------------------------------------
+    // matrix_buffer_ab
+    localparam logic [7:0] MAT_A_DATA_OFF  = 8'h00; // write A elements (auto-inc)
+    localparam logic [7:0] MAT_B_DATA_OFF  = 8'h40; // write B elements (auto-inc)
+    localparam logic [7:0] MAT_AB_CTRL_OFF = 8'h80; // [0]=reset ptrs, [1/2]=full RO
+    // matrix_buffer_c
+    localparam logic [7:0] MAT_C_DATA_OFF  = 8'h00; // read C elements (auto-inc)
+    localparam logic [7:0] MAT_C_CTRL_OFF  = 8'h80; // [0]=reset ptr, [1]=full RO
+
     // CTRL bit positions
     localparam int CTRL_START_BIT      = 0;
     localparam int CTRL_SOFTRST_BIT    = 1;

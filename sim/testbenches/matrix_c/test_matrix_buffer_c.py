@@ -22,6 +22,14 @@ OFF_DATA = 0x00
 OFF_CTRL = 0x80
 
 
+def pack_row(values, width: int) -> int:
+    """Pack N accumulator values LSB-first (column 0 in the low bits)."""
+    word = 0
+    for j, v in enumerate(values):
+        word |= to_unsigned(int(v), width) << (j * width)
+    return word
+
+
 async def reset_dut(dut) -> None:
     dut.rst_n.value = 0
     dut.PSEL.value = 0
@@ -30,9 +38,8 @@ async def reset_dut(dut) -> None:
     dut.PADDR.value = 0
     dut.PWDATA.value = 0
     dut.c_in_valid.value = 0
-    dut.c_data_in.value = 0
+    dut.c_row_data_in.value = 0
     dut.c_row_in.value = 0
-    dut.c_col_in.value = 0
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -47,15 +54,17 @@ async def test_capture_then_readout(dut) -> None:
 
     rng = random.Random(0xFEED)
     expected = {}
-    # Inject MxN values in arbitrary order.
-    coords = [(i, j) for i in range(M) for j in range(N)]
-    rng.shuffle(coords)
-    for i, j in coords:
-        v = rng.randrange(-(1 << (ACC_W - 1)), (1 << (ACC_W - 1)))
-        expected[(i, j)] = v
-        dut.c_data_in.value = to_unsigned(v, ACC_W)
+    # Inject M rows (each a full N-wide beat) in arbitrary row order.
+    rows = list(range(M))
+    rng.shuffle(rows)
+    for i in rows:
+        row_vals = [
+            rng.randrange(-(1 << (ACC_W - 1)), (1 << (ACC_W - 1))) for _ in range(N)
+        ]
+        for j in range(N):
+            expected[(i, j)] = row_vals[j]
+        dut.c_row_data_in.value = pack_row(row_vals, ACC_W)
         dut.c_row_in.value = i
-        dut.c_col_in.value = j
         dut.c_in_valid.value = 1
         await RisingEdge(dut.clk)
     dut.c_in_valid.value = 0
@@ -72,7 +81,7 @@ async def test_capture_then_readout(dut) -> None:
 
 @cocotb.test()
 async def test_ctrl_read_capture_full_flag(dut) -> None:
-    """Read CTRL register: full flag (bit 1) should be 0 initially, 1 after M*N captures."""
+    """Read CTRL register: full flag (bit 1) should be 0 initially, 1 after M row captures."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
@@ -83,21 +92,19 @@ async def test_ctrl_read_capture_full_flag(dut) -> None:
         f"capture_full should be 0 initially, got 0x{ctrl_val:x}"
     )
 
-    # Inject exactly M*N values to fill the buffer.
+    # Inject exactly M rows to fill the buffer.
     for i in range(M):
-        for j in range(N):
-            dut.c_data_in.value = i * N + j
-            dut.c_row_in.value = i
-            dut.c_col_in.value = j
-            dut.c_in_valid.value = 1
-            await RisingEdge(dut.clk)
+        dut.c_row_data_in.value = pack_row([i * N + j for j in range(N)], ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
     dut.c_in_valid.value = 0
     await RisingEdge(dut.clk)
 
-    # After M*N captures: full flag must be 1.
+    # After M row captures: full flag must be 1.
     ctrl_val = await apb.read(OFF_CTRL)
     assert ctrl_val & 0x2, (
-        f"capture_full should be 1 after {M * N} captures, got 0x{ctrl_val:x}"
+        f"capture_full should be 1 after {M} row captures, got 0x{ctrl_val:x}"
     )
 
 
@@ -107,10 +114,11 @@ async def test_reset_pointer_via_ctrl(dut) -> None:
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
-    # Inject a single known value at C[0,0].
-    dut.c_data_in.value = 0xDEAD
+    # Inject row 0 with C[0,0]=0xDEAD, remaining columns 0.
+    row_vals = [0] * N
+    row_vals[0] = 0xDEAD
+    dut.c_row_data_in.value = pack_row(row_vals, ACC_W)
     dut.c_row_in.value = 0
-    dut.c_col_in.value = 0
     dut.c_in_valid.value = 1
     await RisingEdge(dut.clk)
     dut.c_in_valid.value = 0

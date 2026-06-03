@@ -47,7 +47,7 @@ flowchart TB
          direction TB
          skew["Input Skew Chains"]
          pes["PE Grid\n(mac_pe × M×N)\noutput-stationary"]
-         drain["Result Drain\nrow-major"]
+         drain["Result Drain\none row per beat"]
          skew --> pes --> drain
       end
 
@@ -67,7 +67,7 @@ flowchart TB
       streamer -- "mat_valid\na_col / b_row" --> skew
       skew -- "sys_ready" --> streamer
 
-      drain -- "out_valid\nc_data / c_row / c_col" --> mem_c
+      drain -- "out_valid\nc_row_data / c_row" --> mem_c
       mem_c -- "c_in_ready" --> drain
    end
 

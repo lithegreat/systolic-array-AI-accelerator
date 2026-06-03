@@ -45,7 +45,7 @@ flowchart TB
          direction TB
          skew["Input Skew\nShift Chains"]
          pes["PE Grid\n(output-stationary\naccumulators)"]
-         drain["Result Drain\n(row-major order)"]
+         drain["Result Drain\n(one row per beat)"]
          skew --> pes --> drain
       end
 
@@ -65,7 +65,7 @@ flowchart TB
       streamer -- "mat_valid\na_col [M×DATA_W]\nb_row [N×DATA_W]" --> skew
       skew -- "sys_ready" --> streamer
 
-      drain -- "out_valid\nc_data / c_row / c_col" --> mem_c
+      drain -- "out_valid\nc_row_data / c_row" --> mem_c
       mem_c -- "c_in_ready" --> drain
    end
 
@@ -177,18 +177,18 @@ mat_valid, sys_ready"]
 in_valid, in_ready
 a_col, b_row
 out_valid
-c_data, c_row, c_col"]
+c_row_data, c_row"]
    
    c["<b>matrix_buffer_c</b>
 c_in_valid
-c_data_in, c_row_in, c_col_in"]
+c_row_data_in, c_row_in"]
    
    ab -- "mat_valid" --> array
    ab -- "a_col, b_row" --> array
    array -- "in_ready" --> ab
    
    array -- "out_valid" --> c
-   array -- "c_data/row/col" --> c
+   array -- "c_row_data/row" --> c
    
    style ab fill:#c8e6c9
    style array fill:#bbdefb
@@ -271,8 +271,8 @@ Port-by-port summary:
 | `sys_ready` | `systolic_array` | `matrix_buffer_ab` | Consume-ready handshake for streamed inputs |
 | `a_col` | `matrix_buffer_ab` | `systolic_array` | Packed A column vector |
 | `b_row` | `matrix_buffer_ab` | `systolic_array` | Packed B row vector |
-| `out_valid` | `systolic_array` | `matrix_buffer_c` | Valid C output element |
-| `c_data`, `c_row`, `c_col` | `systolic_array` | `matrix_buffer_c` | Captured output element and indices |
+| `out_valid` | `systolic_array` | `matrix_buffer_c` | Valid C output row |
+| `c_row_data`, `c_row` | `systolic_array` | `matrix_buffer_c` | Captured C row (N accumulators) and its row index |
 | `cfg_m`, `cfg_n`, `cfg_k` | `control_unit` | unused in top | Configuration dimensions exported from `control_unit` (unused to avoid lint warnings) |
 | `soft_reset_unused` | `control_unit` | unused in top | Soft reset exported from `control_unit` (unused) |
 | `mat_done` | `matrix_buffer_ab` | unused in top | Done pulse from `matrix_buffer_ab` (unused) |
@@ -297,7 +297,7 @@ Each sub-block keeps its own local `PADDR[7:0]` decode.
 2. Software writes the control register in `control_unit` to request a start.
 3. `control_unit` asserts `array_start` and `array_clear`.
 4. `matrix_buffer_ab` streams one `a_col` and one `b_row` per accepted beat.
-5. `systolic_array` consumes the streamed inputs and produces `c_data` with row/column indices.
+5. `systolic_array` consumes the streamed inputs and produces one full C row (with its row index) per drained beat.
 6. `matrix_buffer_c` captures the outputs in row-major order.
 7. `systolic_array` asserts `array_done`, and `control_unit` raises `done` state and `irq_4` when enabled.
 
