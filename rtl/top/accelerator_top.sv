@@ -57,20 +57,31 @@ module accelerator_top
     logic ready_ab, ready_ctrl, ready_c;
     logic err_ab, err_ctrl, err_c;
 
+    logic sel_any;
+    assign sel_any = sel_ab | sel_ctrl | sel_c;
+
     always_comb begin
         if      (sel_ctrl) PRDATA = prdata_ctrl;
         else if (sel_c)    PRDATA = prdata_c;
         else if (sel_ab)   PRDATA = prdata_ab;
         else               PRDATA = '0;
-        PREADY  = (sel_ab & ready_ab) | (sel_ctrl & ready_ctrl) | (sel_c & ready_c) | ~PSEL;
-        PSLVERR = (sel_ab & err_ab)   | (sel_ctrl & err_ctrl)   | (sel_c & err_c);
+        // Always terminate the transfer. An access to an unmapped region
+        // (e.g. PADDR[9:8]==2'b11) must still complete to avoid stalling the
+        // APB bus; it returns PREADY=1 with PSLVERR=1.
+        PREADY  = (sel_ab & ready_ab) | (sel_ctrl & ready_ctrl) | (sel_c & ready_c)
+                  | (PSEL & ~sel_any) | ~PSEL;
+        PSLVERR = (sel_ab & err_ab) | (sel_ctrl & err_ctrl) | (sel_c & err_c)
+                  | (PSEL & ~sel_any);
     end
 
     // -------------------------------------------------------------------------
     // Internal interconnect signals
     // -------------------------------------------------------------------------
     logic                array_start;
-    logic                array_clear;
+    logic                array_clear;  // driven by control_unit per interface;
+                                       // array self-clears its accumulators
+                                       // (clear_acc in the PE window), so this
+                                       // top-level tap is intentionally unused.
     logic                array_done;
 
     logic                mat_valid;
@@ -164,6 +175,11 @@ module accelerator_top
     // matrix_buffer_c
     // -------------------------------------------------------------------------
     assign out_ready = 1'b1;  // capture buffer always ready in v1
+
+    // array_clear is provided by control_unit for interface compatibility but
+    // the array self-clears; tie it into an unused tap to keep lint clean.
+    logic _unused_array_clear;
+    assign _unused_array_clear = array_clear;
 
     matrix_buffer_c #(
         .ACC_W (ACC_W),

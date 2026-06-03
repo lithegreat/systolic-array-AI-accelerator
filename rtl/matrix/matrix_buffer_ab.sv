@@ -74,17 +74,18 @@ module matrix_buffer_ab
     logic apb_access;
     assign apb_access = PSEL && PENABLE;
     assign PREADY     = 1'b1;
-    // Flag writes that would push past a bank's capacity so software
-    // over-runs surface instead of being silently dropped.
-    assign PSLVERR    = apb_access && PWRITE &&
-                        ((sel_a && (a_wptr >= A_DEPTH[A_PTR_W-1:0])) ||
-                         (sel_b && (b_wptr >= B_DEPTH[B_PTR_W-1:0])));
 
     // Decode by local offset (from accel_pkg)
     logic sel_a, sel_b, sel_ctrl;
     assign sel_a    = (PADDR[7:0] == MAT_A_DATA_OFF);
     assign sel_b    = (PADDR[7:0] == MAT_B_DATA_OFF);
     assign sel_ctrl = (PADDR[7:0] == MAT_AB_CTRL_OFF);
+
+    // Flag writes that would push past a bank's capacity so software
+    // over-runs surface instead of being silently dropped.
+    assign PSLVERR    = apb_access && PWRITE &&
+                        ((sel_a && (a_wptr >= A_DEPTH[A_PTR_W-1:0])) ||
+                         (sel_b && (b_wptr >= B_DEPTH[B_PTR_W-1:0])));
 
     // -------------------------------------------------------------------------
     // APB write logic (zero-wait)

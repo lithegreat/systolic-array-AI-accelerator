@@ -58,12 +58,13 @@ module matrix_buffer_c
     logic apb_access;
     assign apb_access = PSEL && PENABLE;
     assign PREADY     = 1'b1;
-    // Flag reads past the captured C window as an error.
-    assign PSLVERR    = apb_access && !PWRITE && sel_data && (r_ptr >= C_DEPTH[PTR_W-1:0]);
 
     logic sel_data, sel_ctrl;
     assign sel_data = (PADDR[7:0] == MAT_C_DATA_OFF);
     assign sel_ctrl = (PADDR[7:0] == MAT_C_CTRL_OFF);
+
+    // Flag reads past the captured C window as an error.
+    assign PSLVERR    = apb_access && !PWRITE && sel_data && (r_ptr >= C_DEPTH[PTR_W-1:0]);
 
     // -------------------------------------------------------------------------
     // Capture path: write all N columns of the incoming row in one cycle.
