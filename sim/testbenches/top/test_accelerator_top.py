@@ -303,10 +303,12 @@ async def test_top_irq_path(dut) -> None:
     # Enable the SoC-level IRQ gate.
     dut.irq_en_4.value = 1
 
-    # Run a minimal 1-element identity matmul to trigger done.
+    # Run a minimal identity matmul to trigger done. Zero-pad to the full
+    # hardware tile so the compute runs on defined data (the banks are not
+    # cleared on reset).
     rng = random.Random(0xABC0)
-    a = random_matrix(1, 1, 8, rng).astype(np.int64)
-    b = random_matrix(1, 1, 8, rng).astype(np.int64)
+    a = pad_to_hw(random_matrix(1, 1, 8, rng).astype(np.int64), M, K)
+    b = pad_to_hw(random_matrix(1, 1, 8, rng).astype(np.int64), K, N)
     await run_matmul(dut, a, b)
 
     # irq_4 should now be high (interrupt fired).
@@ -323,3 +325,46 @@ async def test_top_irq_path(dut) -> None:
     # Restore irq_en_4 low (toggles back).
     dut.irq_en_4.value = 0
     dut.ss_ctrl_4.value = 0
+
+
+@cocotb.test()
+async def test_top_unmapped_region(dut) -> None:
+    """An access to an unmapped APB region must terminate (no bus stall).
+
+    PADDR[9:8]==2'b11 (e.g. 0x300) matches no subordinate; the top-level
+    decoder must still assert PREADY (and PSLVERR) so the bus does not hang.
+    """
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    unmapped = 0x300
+
+    # Read access to the unmapped region.
+    dut.PADDR.value = unmapped
+    dut.PWRITE.value = 0
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk_in)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    assert int(dut.PREADY.value) == 1, "PREADY must be high for unmapped read"
+    assert int(dut.PSLVERR.value) == 1, "PSLVERR must flag unmapped read"
+    await RisingEdge(dut.clk_in)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+
+    # Write access to the unmapped region.
+    dut.PADDR.value = unmapped
+    dut.PWDATA.value = 0xDEADBEEF
+    dut.PWRITE.value = 1
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk_in)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    assert int(dut.PREADY.value) == 1, "PREADY must be high for unmapped write"
+    assert int(dut.PSLVERR.value) == 1, "PSLVERR must flag unmapped write"
+    await RisingEdge(dut.clk_in)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+    dut.PWRITE.value = 0
