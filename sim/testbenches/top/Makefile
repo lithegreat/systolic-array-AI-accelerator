@@ -4,6 +4,7 @@ MODULE   := test_accelerator_top
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../..)
 VERILOG_SOURCES := \
     $(REPO_ROOT)/rtl/MAC/mac_pe.sv \
+    $(REPO_ROOT)/rtl/array/skew_shift.sv \
     $(REPO_ROOT)/rtl/array/systolic_array.sv \
     $(REPO_ROOT)/rtl/matrix/matrix_buffer_ab.sv \
     $(REPO_ROOT)/rtl/matrix/matrix_buffer_c.sv \
