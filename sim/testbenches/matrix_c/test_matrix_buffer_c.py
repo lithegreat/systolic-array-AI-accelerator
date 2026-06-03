@@ -71,6 +71,33 @@ async def test_capture_then_readout(dut) -> None:
 
 
 @cocotb.test()
+async def test_ctrl_read_capture_full_flag(dut) -> None:
+    """Read CTRL register: full flag (bit 1) should be 0 initially, 1 after M*N captures."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Before any captures: full flag must be 0.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert not (ctrl_val & 0x2), f"capture_full should be 0 initially, got 0x{ctrl_val:x}"
+
+    # Inject exactly M*N values to fill the buffer.
+    for i in range(M):
+        for j in range(N):
+            dut.c_data_in.value = i * N + j
+            dut.c_row_in.value = i
+            dut.c_col_in.value = j
+            dut.c_in_valid.value = 1
+            await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # After M*N captures: full flag must be 1.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"capture_full should be 1 after {M*N} captures, got 0x{ctrl_val:x}"
+
+
+@cocotb.test()
 async def test_reset_pointer_via_ctrl(dut) -> None:
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await reset_dut(dut)
