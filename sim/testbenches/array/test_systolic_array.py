@@ -97,20 +97,23 @@ async def run_one_tile(
         in_valid_now = int(dut.in_valid.value)
         out_valid_now = int(dut.out_valid.value)
         out_ready_now = int(dut.out_ready.value)
-        c_data_now = to_signed(int(dut.c_data.value), ACC_W)
+        c_row_data_now = int(dut.c_row_data.value)
         c_row_now = int(dut.c_row.value)
-        c_col_now = int(dut.c_col.value)
 
         await RisingEdge(dut.clk)
 
         if fed < K and in_ready_now and in_valid_now:
             fed += 1
         if out_valid_now and out_ready_now:
-            assert (
-                c_row_now,
-                c_col_now,
-            ) not in captured, f"duplicate drain at ({c_row_now},{c_col_now})"
-            captured[(c_row_now, c_col_now)] = c_data_now
+            # Unpack the N accumulators of this row (column 0 in low bits).
+            for col in range(N):
+                word = (c_row_data_now >> (col * ACC_W)) & ((1 << ACC_W) - 1)
+                value = to_signed(word, ACC_W)
+                assert (
+                    c_row_now,
+                    col,
+                ) not in captured, f"duplicate drain at ({c_row_now},{col})"
+                captured[(c_row_now, col)] = value
         if int(dut.done.value):
             saw_done = True
 
