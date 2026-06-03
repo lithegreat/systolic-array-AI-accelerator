@@ -6,6 +6,66 @@
 
 Each accepted element is identified by `(c_row_in, c_col_in)` and written to linear address `c_row_in * N + c_col_in`.
 
+## 1.1 Block Diagram
+
+```mermaid
+flowchart TB
+   subgraph CAPTURE_IN["Capture Interface (from systolic_array)"]
+      direction LR
+      cv_i(["c_in_valid"])
+      cd_i(["c_data_in\n[ACC_W-1:0]"])
+      cr_i(["c_row_in\n[log2(M)-1:0]"])
+      cc_i(["c_col_in\n[log2(N)-1:0]"])
+   end
+
+   subgraph MC["matrix_buffer_c"]
+      direction TB
+      addr_calc["Address Calc\nc_row_in × N + c_col_in"]
+      mem_c["Matrix C Storage\nM × N elements\nACC_W bits each\n(row-major)"]
+      cap_cnt["Capture Counter\n(0 → M×N = full)"]
+      rd_ptr["Read Pointer\nauto-increment on APB read"]
+      decode_apb{{"APB Decode\n0x00 → read MAT_C_DATA\n0x80 → MAT_CTRL"}}
+
+      addr_calc --> mem_c
+      mem_c --> rd_ptr
+      cap_cnt --> decode_apb
+      rd_ptr --> decode_apb
+   end
+
+   subgraph CAPTURE_OUT["Capture Handshake"]
+      cr_o(["c_in_ready"])
+      cf_o(["capture_full"])
+   end
+
+   subgraph APB_IN["APB Interface"]
+      pa_i(["PADDR[7:0]"])
+      ps_i(["PSEL / PENABLE / PWRITE"])
+      pw_i(["PWDATA"])
+   end
+
+   subgraph APB_OUT["APB Read Back"]
+      pr_o(["PRDATA\nPREADY / PSLVERR"])
+   end
+
+   cv_i --> addr_calc
+   cd_i --> mem_c
+   cr_i --> addr_calc
+   cc_i --> addr_calc
+   cap_cnt --> cr_o
+   cap_cnt --> cf_o
+
+   pa_i --> decode_apb
+   ps_i --> decode_apb
+   pw_i --> decode_apb
+   decode_apb --> pr_o
+
+   style MC fill:#fff9c4,stroke:#f9a825
+   style CAPTURE_IN fill:#bbdefb,stroke:#1976d2
+   style CAPTURE_OUT fill:#bbdefb,stroke:#1976d2
+   style APB_IN fill:#f5f5f5,stroke:#999
+   style APB_OUT fill:#f5f5f5,stroke:#999
+```
+
 ## 2. Parameters
 
 | Parameter Name | Default Value | Description |

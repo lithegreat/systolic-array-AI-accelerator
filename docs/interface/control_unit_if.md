@@ -5,15 +5,72 @@
 
 ### Block Diagram
 
-```text
-                           +---------------------------+
-        SoC clock/reset -->|                           |===> Legacy Matrix A Addr/REN (tied off in v1)
-                           |                           |===> Legacy Matrix B Addr/REN (tied off in v1)
-          SoC APB Bus ====>|                           |===> Legacy Matrix C Addr/WEN (tied off in v1)
-                           |       control_unit        |===> Systolic Array Control (start, clear)
-       SoC interrupts <----|                           |===> Config Export (M, N, K, soft_reset)
-                           |                           |<=== Array Status (done)
-                           +---------------------------+
+```mermaid
+flowchart LR
+   subgraph SOC["SoC"]
+      direction TB
+      clk_s(["clk_in"])
+      rst_s(["reset_int"])
+      apb_s(["APB Bus\nPADDR / PSEL / PENABLE\nPWRITE / PWDATA"])
+      irqen_s(["irq_en_4"])
+      ssctrl_s(["ss_ctrl_4"])
+      irq_s(["irq_4"])
+   end
+
+   subgraph CU["control_unit"]
+      direction TB
+      regfile["Register File\nCTRL · STATUS\nM_DIM · N_DIM · K_DIM\nINT_EN · INT_STAT"]
+      fsm["Control FSM\nIDLE → ISSUE\n→ BUSY → DONE"]
+      irqlogic["IRQ Logic\nirq_en_4 & INT_EN\n& INT_STAT.done"]
+      regfile <--> fsm
+      fsm --> irqlogic
+   end
+
+   subgraph ACCEL["Accelerator Datapath"]
+      direction TB
+      ab(["matrix_buffer_ab\n(mat_start)"])
+      arr(["systolic_array\n(start, clear)"])
+      done_in(["array_done"])
+   end
+
+   subgraph LEGACY["Legacy Compat Ports (tied 0)"]
+      direction TB
+      la(["matrix_a_addr/ren"])
+      lb(["matrix_b_addr/ren"])
+      lc(["matrix_c_addr/wen"])
+   end
+
+   clk_s --> CU
+   rst_s --> CU
+   apb_s -- "write/read" --> regfile
+   regfile -- "PRDATA\nPREADY / PSLVERR" --> apb_s
+   irqen_s --> irqlogic
+   ssctrl_s --> regfile
+
+   fsm -- "array_start\narray_clear" --> ab
+   fsm -- "array_start\narray_clear" --> arr
+   done_in --> fsm
+
+   fsm -- "cfg_m/n/k\nsoft_reset" --> ACCEL
+   irqlogic -- "irq_4" --> irq_s
+
+   fsm -. "tied 0" .-> la
+   fsm -. "tied 0" .-> lb
+   fsm -. "tied 0" .-> lc
+
+   style CU fill:#e1f5ff,stroke:#0288d1
+   style SOC fill:#f5f5f5,stroke:#999
+   style ACCEL fill:#c8e6c9,stroke:#388e3c
+   style LEGACY fill:#fce4ec,stroke:#c62828
+```
+
+```mermaid
+stateDiagram-v2
+   [*] --> IDLE
+   IDLE --> ISSUE : CTRL.start written
+   ISSUE --> BUSY : next cycle\n(array_start deasserted)
+   BUSY --> DONE : array_done pulse
+   DONE --> IDLE : STATUS.done set\nirq_4 raised
 ```
 
 ### Description
