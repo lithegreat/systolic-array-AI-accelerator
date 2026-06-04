@@ -29,6 +29,11 @@ Relevant modules:
 
 ## Running the simulation in QuestaSim
 
+> **One-command path.** `scripts/lab_server_sim.sh [TESTCASE]` (default
+> `accel`) runs the whole flow below — `repository_init`, the baremetal build,
+> and compile + elaborate inside the container — and also runs `run_sim` when
+> `MGLS_LICENSE_FILE` is set. The manual steps are kept here for reference.
+
 - Load the QuestaSim environment module: `module load mentor/questasim/2023.4`.
 - Because of a binary incompatibility with Ubuntu 24.04, the simulation must run
   inside the lab apptainer container. The container image is
