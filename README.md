@@ -88,11 +88,14 @@ flowchart TB
 ## What lives where
 - `rtl/` contains the SystemVerilog design components (`MAC/`, `array/`, `matrix/`, `control/`, `top/`).
 - `sim/testbenches/` contains the cocotb and Verilator test scripts categorized per module.
+- `sim/scripts/` contains the standalone simulation runners (`run_verilator.sh`, `run_xsim.sh`) and the shared `Makefile.common`.
 - `sim/common/` contains shared Python helpers and golden models.
 - `docs/` contains documentation on the Didactic SoC, GitLab coordination, and interfaces.
 - `fpga/` contains FPGA constraints and the Vivado project setup.
 - `asic/` contains reports and scripts targeting the GF 22 nm FDX technology node.
 - `sw/` contains C-based software drivers and tests for the RISC-V Ibex core interactions.
+- `bin/` holds local tool binaries (e.g. `bender`); it is gitignored and not committed.
+- `Didactic-SoC/` is the Edu4Chip SoC included as a git submodule; the accelerator is integrated into its `tum_ss` subsystem slot.
 
 ## Development and Verification Flow
 Functionality changes require the following pipeline to be considered complete:
@@ -221,15 +224,61 @@ As of June 2026 the aggregate line coverage across all RTL modules is **80 %** (
 Remaining gaps are either ports tied to constant zero (`PSLVERR`) or `unique case` default
 branches that require an illegal FSM state to fire. Both are intentional design constraints.
 
+## Standalone accelerator simulation
+Besides the cocotb suite, the accelerator can be exercised end-to-end through its APB
+interface with a self-contained SystemVerilog testbench
+([sim/testbenches/accel/tb_accel.sv](sim/testbenches/accel/tb_accel.sv)). This needs no SoC,
+no Ibex core, and no RISC-V program.
+
+```bash
+# Verilator 5.x (with --timing). Builds accelerator_top + tb_accel and prints PASS/FAIL.
+./sim/scripts/run_verilator.sh
+
+# Optionally dump waves to sim/waves/
+./sim/scripts/run_verilator.sh --trace
+```
+
+A Vivado/xsim runner is also provided for environments that have the Xilinx tools:
+
+```bash
+./sim/scripts/run_xsim.sh
+```
+
+## Full-SoC integration (Didactic SoC)
+The accelerator is integrated into the Edu4Chip SoC (included as the `Didactic-SoC`
+git submodule) in the `tum_ss` subsystem slot. The full SoC — Ibex core, all subsystems,
+and the accelerator — builds and elaborates under the SoC's official Verilator flow:
+
+```bash
+cd Didactic-SoC
+make verilate
+```
+
+A baremetal self-checking GEMM test for the accelerator lives at
+`Didactic-SoC/sw/accel/accel.c`. Building it requires a baremetal RISC-V toolchain
+(`riscv-none-elf-gcc`, rv32imc/ilp32):
+
+```bash
+cd Didactic-SoC/sw
+make PREFIX=riscv-none-elf TESTCASE=accel TEST=accel test   # -> ../build/sw/accel.hex
+```
+
+> Note: the Didactic SoC has no autonomous boot ROM — the Ibex boot address points into the
+> control-register region, and the reference SystemVerilog testbench boots the core over JTAG
+> (which Verilator cannot run because it uses SystemVerilog classes). Running `accel.c` on the
+> CPU in-loop is therefore done with Questa on the lab server; the standalone testbench above
+> fully verifies accelerator function locally.
+
 ## CI and pre-commit
 This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
-- convention checks
-- `black --check .`
+- convention checks (`scripts/check_conventions.py`)
+- `ruff format --check .`
 - `.gitkeep` validation
 - cocotb simulation through Verilator
+- the standalone accelerator Verilator testbench (`sim/scripts/run_verilator.sh`)
 
 Pre-commit hooks are also configured for local use. They run:
-- `black`
+- `ruff format`
 - `python scripts/check_conventions.py`
 - `python scripts/check_gitkeep.py`
 
