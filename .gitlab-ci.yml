@@ -36,3 +36,14 @@ cocotb_sim:
     - pip3 install --break-system-packages -r requirements/sim.txt
   script:
     - pytest -vv sim/test_runner.py
+
+accel_verilator_sim:
+  stage: sim
+  image:
+    name: $SIM_IMAGE
+    entrypoint: [""]
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends make g++ bash
+  script:
+    - ./sim/scripts/run_verilator.sh
+
