@@ -318,23 +318,45 @@ cd Didactic-SoC && make repository_init
 
 ### Simulation flow (QuestaSim, CPU in-loop)
 QuestaSim must run inside the lab apptainer container (binary incompatibility with Ubuntu
-24.04). The container image and launch script are under `/nas/ei/share/tools/apptainer/MSMCD`.
+24.04). The container image is `/nas/ei/share/tools/apptainer/MSMCD/alma.sif`.
+
+The lab uses *environment modules*, which a non-login shell does not auto-initialise. Source
+the init script first, then load the toolchain and QuestaSim modules:
 
 ```bash
-# Build the accelerator baremetal program (RISC-V). XLEN=64 selects the lab's
-# 64-bit multilib toolchain; the code is still compiled as rv32imc/ilp32.
-module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
+source /nas/ei/share/tools/environment_modules/4.5.1/init/bash
+module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05   # riscv64 gcc (baremetal)
+module load mentor/questasim/2023.4                                 # vlog/vopt/vsim on PATH
+```
+
+Build the accelerator baremetal program. `XLEN=64` selects the lab's 64-bit multilib
+toolchain; the code is still compiled as `rv32imc/ilp32`:
+
+```bash
 cd Didactic-SoC
 make build_test XLEN=64 TESTCASE=accel TEST=accel      # -> build/sw/accel.hex
-
-# Compile + elaborate + run the SoC simulation inside the container.
-module load mentor/questasim/2023.4
-# launch /nas/ei/share/tools/apptainer/MSMCD container, then inside it:
-cd Didactic-SoC/sim
-make compile
-make elaborate TESTCASE=accel
-make run_sim    TESTCASE=accel                          # Ibex boots accel.hex over JTAG
 ```
+
+Compile, elaborate and run inside the container. Run `vlog/vopt/vsim` non-interactively with
+`apptainer exec` (no GUI needed). The `/nfs` bind is required — QuestaSim lives under
+`/nfs/tools/...`, so without it `vlib`/`vsim` are not found:
+
+```bash
+SIF=/nas/ei/share/tools/apptainer/MSMCD/alma.sif
+apptainer exec --env PATH="$PATH" \
+    --bind /nas:/nas --bind /nfs:/nfs --bind /data:/data --bind /tmp:/tmp --bind "$HOME:$HOME" \
+    "$SIF" bash -c '
+        cd Didactic-SoC/sim
+        make compile
+        make elaborate TESTCASE=accel
+        make run_sim    TESTCASE=accel'   # Ibex boots accel.hex over JTAG
+```
+
+`vlog`/`vopt` (compile + elaborate) need no license and confirm the accelerator integrates and
+elaborates cleanly inside the full SoC. `vsim` (`run_sim`) does need a Mentor/Siemens license:
+export the lab's license server before entering the container and pass it through, e.g.
+`export MGLS_LICENSE_FILE=<port@host>` and add `--env MGLS_LICENSE_FILE` to the `apptainer exec`
+call.
 
 To run a different program, change `TESTCASE`/`TEST` (e.g. `blink` to first sanity-check the
 environment). Add `GUI=-gui` to `make run_sim` for the QuestaSim GUI.
