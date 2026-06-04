@@ -1,80 +1,91 @@
 stages:
+  - build
   - check
   - sim
 
 variables:
-  CHECK_PYTHON_IMAGE: python:3.13-slim
-  SIM_IMAGE: verilator/verilator:latest
-  # Keep pip/apt caches inside the project dir so GitLab can cache them.
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  APT_CACHE_DIR: "$CI_PROJECT_DIR/.cache/apt"
+  # Prebuilt CI images stored in the project's GitLab Container Registry.
+  # Built by the 'build' stage only when their Dockerfile or requirements
+  # change; the check/sim jobs then reuse them with no apt/pip install.
+  CHECK_IMAGE: "$CI_REGISTRY_IMAGE/ci-check:latest"
+  SIM_IMAGE: "$CI_REGISTRY_IMAGE/ci-sim:latest"
 
-# Shared cache for pip wheels and apt archives so we don't re-download
-# dependencies on every pipeline. Keyed on the requirement files so the cache
-# is only invalidated when dependencies actually change.
-.py_check_cache: &py_check_cache
-  key:
-    files:
-      - requirements/check.txt
-  paths:
-    - .cache/pip
-  policy: pull-push
+# ---------------------------------------------------------------------------
+# Build stage: build the check/sim images once and push them to the registry.
+# Subsequent pipelines reuse the published images, so the check/sim jobs no
+# longer run apt-get/pip install (saves server bandwidth and CI time).
+# Jobs only run when the relevant Dockerfile or requirements file changes,
+# and can also be triggered manually.
+# ---------------------------------------------------------------------------
+.build_image:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
 
-.sim_cache: &sim_cache
-  key:
-    files:
-      - requirements/sim.txt
-  paths:
-    - .cache/pip
-    - .cache/apt
-  policy: pull-push
+build_check_image:
+  extends: .build_image
+  script:
+    - docker pull "$CHECK_IMAGE" || true
+    - docker build --cache-from "$CHECK_IMAGE" -f ci/check.Dockerfile -t "$CHECK_IMAGE" .
+    - docker push "$CHECK_IMAGE"
+  rules:
+    - changes:
+        - ci/check.Dockerfile
+        - requirements/check.txt
+    - when: manual
+      allow_failure: true
 
+build_sim_image:
+  extends: .build_image
+  script:
+    - docker pull "$SIM_IMAGE" || true
+    - docker build --cache-from "$SIM_IMAGE" -f ci/sim.Dockerfile -t "$SIM_IMAGE" .
+    - docker push "$SIM_IMAGE"
+  rules:
+    - changes:
+        - ci/sim.Dockerfile
+        - requirements/sim.txt
+    - when: manual
+      allow_failure: true
+
+# ---------------------------------------------------------------------------
+# Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
+# ---------------------------------------------------------------------------
 check_conventions:
   stage: check
-  image: $CHECK_PYTHON_IMAGE
-  cache: *py_check_cache
+  image: $CHECK_IMAGE
   script:
-    - pip install -r requirements/check.txt
     - python3 scripts/check_conventions.py
 
 check_python_format:
   stage: check
-  image: $CHECK_PYTHON_IMAGE
-  cache: *py_check_cache
+  image: $CHECK_IMAGE
   script:
-    - pip install -r requirements/check.txt
     - ruff format --check .
 
 check_gitkeep:
   stage: check
-  image: $CHECK_PYTHON_IMAGE
+  image: $CHECK_IMAGE
   script:
     - python3 scripts/check_gitkeep.py
 
+# ---------------------------------------------------------------------------
+# Sim stage: Verilator + Python sim deps are baked into SIM_IMAGE.
+# ---------------------------------------------------------------------------
 cocotb_sim:
   stage: sim
-  image:
-    name: $SIM_IMAGE
-    entrypoint: [""]
-  cache: *sim_cache
-  before_script:
-    - mkdir -p "$APT_CACHE_DIR"
-    - apt-get update
-    - apt-get -o dir::cache::archives="$APT_CACHE_DIR" install -y --no-install-recommends python3 python3-pip python3-dev make g++
-    - pip3 install --break-system-packages -r requirements/sim.txt
+  image: $SIM_IMAGE
   script:
     - pytest -vv sim/test_runner.py
 
 accel_verilator_sim:
   stage: sim
-  image:
-    name: $SIM_IMAGE
-    entrypoint: [""]
-  cache: *sim_cache
-  before_script:
-    - mkdir -p "$APT_CACHE_DIR"
-    - apt-get update
-    - apt-get -o dir::cache::archives="$APT_CACHE_DIR" install -y --no-install-recommends make g++ bash
+  image: $SIM_IMAGE
   script:
     - ./sim/scripts/run_verilator.sh
 
