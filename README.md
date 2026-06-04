@@ -4,6 +4,27 @@ This project implements a systolic-array based AI accelerator for the [Edu4Chip 
 
 If you want the interface reference, see [docs/interface/README.md](docs/interface/README.md).
 
+## Table of contents
+- [Architecture Overview](#architecture-overview)
+- [What lives where](#what-lives-where)
+- [Development and Verification Flow](#development-and-verification-flow)
+- [Before you start](#before-you-start)
+- [Quick start](#quick-start)
+  - [Clone the repository](#clone-the-repository)
+  - [Create the Python environment](#create-the-python-environment)
+- [Run locally](#run-locally)
+- [GitLab workflow](#gitlab-workflow)
+- [Running simulations and viewing coverage](#running-simulations-and-viewing-coverage)
+  - [Functional RTL coverage](#functional-rtl-coverage)
+  - [Current coverage baseline](#current-coverage-baseline)
+- [Standalone accelerator simulation](#standalone-accelerator-simulation)
+- [Full-SoC integration (Didactic SoC)](#full-soc-integration-didactic-soc)
+  - [Lab-server prerequisites (one-time)](#lab-server-prerequisites-one-time)
+  - [Simulation flow (QuestaSim, CPU in-loop)](#simulation-flow-questasim-cpu-in-loop)
+  - [FPGA flow (PYNQ-Z1)](#fpga-flow-pynq-z1)
+- [CI and pre-commit](#ci-and-pre-commit)
+- [Troubleshooting](#troubleshooting)
+
 ## Architecture Overview
 The ML accelerator architecture is divided into the following loosely-coupled functional blocks:
 - **Control Logic**: Orchestrates data movement and computation (in `rtl/control/`).
