@@ -320,6 +320,18 @@ cd Didactic-SoC && make repository_init
 QuestaSim must run inside the lab apptainer container (binary incompatibility with Ubuntu
 24.04). The container image is `/nas/ei/share/tools/apptainer/MSMCD/alma.sif`.
 
+**Quick path** — once the submodule and `bin/bender` are in place, the whole flow (deps,
+baremetal build, compile, elaborate) runs with one command on the lab server:
+
+```bash
+bash scripts/lab_server_sim.sh accel        # default TESTCASE=accel
+# with a license, run_sim is included too:
+export MGLS_LICENSE_FILE=<port@host>
+bash scripts/lab_server_sim.sh accel
+```
+
+The manual steps the script automates are documented below.
+
 The lab uses *environment modules*, which a non-login shell does not auto-initialise. Source
 the init script first, then load the toolchain and QuestaSim modules:
 
