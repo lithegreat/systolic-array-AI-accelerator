@@ -254,6 +254,12 @@ cd Didactic-SoC
 make verilate
 ```
 
+This compiles the entire SoC (including the accelerator RTL) and runs the C++ testbench,
+dumping waves to `Didactic-SoC/logs/vlt_dump.vcd`. It confirms the accelerator elaborates
+and links inside the SoC, but it cannot run the Ibex CPU in-loop (see the boot-ROM note
+below). For day-to-day functional verification of the accelerator, prefer the standalone
+testbench in the previous section.
+
 A baremetal self-checking GEMM test for the accelerator lives at
 `Didactic-SoC/sw/accel/accel.c`. Building it requires a baremetal RISC-V toolchain
 (`riscv-none-elf-gcc`, rv32imc/ilp32):
@@ -266,8 +272,87 @@ make PREFIX=riscv-none-elf TESTCASE=accel TEST=accel test   # -> ../build/sw/acc
 > Note: the Didactic SoC has no autonomous boot ROM — the Ibex boot address points into the
 > control-register region, and the reference SystemVerilog testbench boots the core over JTAG
 > (which Verilator cannot run because it uses SystemVerilog classes). Running `accel.c` on the
-> CPU in-loop is therefore done with Questa on the lab server; the standalone testbench above
-> fully verifies accelerator function locally.
+> CPU in-loop is therefore done with QuestaSim on the lab server (simulation flow below) or on
+> the PYNQ-Z1 FPGA (FPGA flow below); the standalone testbench above fully verifies accelerator
+> function locally.
+
+### Lab-server prerequisites (one-time)
+These flows run on the TUM lab server with the Didactic SoC included here as a submodule —
+do **not** clone the upstream `Edu4Chip/Didactic-SoC` separately; the submodule is already
+pinned to the fork that integrates the accelerator into `tum_ss`.
+
+```bash
+# 1. Get the submodule (and its nested IPs)
+git submodule update --init --recursive
+
+# 2. Provide bender (PULP dependency manager) on PATH
+mkdir -p bin && cd bin
+wget https://github.com/pulp-platform/bender/releases/download/v0.31.0/bender-0.31.0-x86_64-linux-gnu-ubuntu24.04.tar.gz
+tar -xzf bender-0.31.0-*.tar.gz && rm bender-0.31.0-*.tar.gz
+cd .. && export PATH="$PWD/bin:$PATH"
+
+# 3. Fetch SoC RTL dependencies (ibex, obi, common_cells, ...)
+cd Didactic-SoC && make repository_init
+```
+
+### Simulation flow (QuestaSim, CPU in-loop)
+QuestaSim must run inside the lab apptainer container (binary incompatibility with Ubuntu
+24.04). The container image and launch script are under `/nas/ei/share/tools/apptainer/MSMCD`.
+
+```bash
+# Build the accelerator baremetal program (RISC-V). XLEN=64 selects the lab's
+# 64-bit multilib toolchain; the code is still compiled as rv32imc/ilp32.
+module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
+cd Didactic-SoC
+make build_test XLEN=64 TESTCASE=accel TEST=accel      # -> build/sw/accel.hex
+
+# Compile + elaborate + run the SoC simulation inside the container.
+module load mentor/questasim/2023.4
+# launch /nas/ei/share/tools/apptainer/MSMCD container, then inside it:
+cd Didactic-SoC/sim
+make compile
+make elaborate TESTCASE=accel
+make run_sim    TESTCASE=accel                          # Ibex boots accel.hex over JTAG
+```
+
+To run a different program, change `TESTCASE`/`TEST` (e.g. `blink` to first sanity-check the
+environment). Add `GUI=-gui` to `make run_sim` for the QuestaSim GUI.
+
+### FPGA flow (PYNQ-Z1)
+Builds the bitstream with Vivado, then loads the accelerator program onto the Ibex core over
+JTAG (FT4232H + OpenOCD).
+
+```bash
+# 1. Build the FPGA software image (separate fpga/sw flow, riscv32 toolchain)
+module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
+cd Didactic-SoC/fpga/sw
+make env
+make test TESTCASE=accel                                # -> build/fpga/sw/accel.elf
+
+# 2. Synthesize, implement and generate the bitstream (z1 = PYNQ-Z1)
+module load xilinx/vivado/2024.1
+cd Didactic-SoC/fpga
+make all_xilinx                                         # batch; or 'make all_xilinx_gui'
+```
+
+Then program the board and run the core:
+
+```bash
+# Open the generated project and write the bitstream to the FPGA
+#   build/fpga/z1/didactic-z1.xpr
+# Wire the JTAG IO pins to the FT4232H module, then in a new terminal:
+openocd -f Didactic-SoC/fpga/utils/openocd-didactic.cfg
+
+# In another terminal, load and run the ELF on Ibex via GDB:
+cd Didactic-SoC/fpga
+make load_elf TEST=accel
+#   in the GDB session: type 'c' + Enter to run, Ctrl+C to halt, 'quit' to exit
+```
+
+> Board bring-up notes (from the lab setup): the OpenOCD config needs the FT4232H serial
+> number and `vid_pid 0x6011`; the PYNQ-Z1 PLL is configured for 25 MHz (UART examples must
+> match); and `fpga/constraints/z1.xdc` maps two GPIOs to the board LEDs. These only matter
+> for the FPGA flow, not for simulation.
 
 ## CI and pre-commit
 This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
