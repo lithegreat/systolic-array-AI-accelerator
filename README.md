@@ -412,6 +412,14 @@ make load_elf TEST=accel
 > match); and `fpga/constraints/z1.xdc` maps two GPIOs to the board LEDs. These only matter
 > for the FPGA flow, not for simulation.
 
+> Synthesis status (verified on the lab server, Vivado 2024.1 / `xc7z020`): the integrated
+> SoC **synthesizes cleanly** — `synth_design` + `opt_design` complete with **0 DRC errors**
+> and the accelerator RTL is in the netlist. However the **default 16x16 accelerator does not
+> fit on the PYNQ-Z1**: post-synthesis utilization is 54822/53200 LUTs (103%) and 220/220
+> DSPs (100%), so the placer overflows and no bitstream is produced. Reduce the array size
+> (e.g. 8x8) or target a larger device to generate a bitstream. See
+> [docs/edu4chip_examples.md](docs/edu4chip_examples.md) for the full report.
+
 ## CI and pre-commit
 This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
 - convention checks (`scripts/check_conventions.py`)
