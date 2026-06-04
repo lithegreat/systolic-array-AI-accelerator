@@ -102,6 +102,33 @@ sufficient to prove RTL integration in the meantime.
 - Open the project `Didactic-SoC/build/fpga/z1/didactic-z1.xpr` (built by
   `make all_xilinx` in `Didactic-SoC/fpga`).
 - Write the bitstream to the FPGA.
+
+### Synthesis status (verified) and PYNQ-Z1 capacity
+
+`make all_xilinx` (Vivado 2024.1, target `xc7z020clg400-1`) was run on the lab
+server with the accelerator integrated into the SoC. Results:
+
+- **Synthesis passes cleanly**: `synth_design` and `opt_design` complete
+  successfully, DRC reports **0 errors**. The accelerator RTL is included in the
+  netlist (`accel_pkg`, `control_unit`, `systolic_array`, `accelerator_top`).
+- **The default 16x16 accelerator does not fit on the PYNQ-Z1**: the placer
+  fails with a capacity overflow, so no bitstream is produced. Post-synthesis
+  utilization:
+
+  | Resource        | Used  | Available | Util%   |
+  | --------------- | ----- | --------- | ------- |
+  | Slice LUTs      | 54822 | 53200     | 103.05% |
+  | DSP48E1         | 220   | 220       | 100.00% |
+  | Slice Registers | 35399 | 106400    | 33.27%  |
+
+  The 16x16x16 systolic array (256 MAC PEs, `DEF_M/N/K = 16` in
+  `rtl/include/accel_pkg.sv`) saturates all 220 DSPs and pushes total LUT usage
+  past 100%. To generate a bitstream, reduce the array dimensions (e.g. 8x8) or
+  target a larger device.
+
+> Note: `Didactic-SoC/fpga/scripts/run_xilinx.tcl` hardcodes the synthesis
+> include paths (like the sim Makefile). The accelerator's `rtl/include` was
+> added there so Vivado can resolve `accel_pkg.sv`.
 - Connect the JTAG IO pins on the FPGA board to the FT4232H module.
 - Open an OpenOCD connection in a new terminal:
   `openocd -f Didactic-SoC/fpga/utils/openocd-didactic.cfg`.
