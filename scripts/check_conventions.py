@@ -38,9 +38,12 @@ def check_interface_naming():
 def check_root_files():
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     allowed_files = {"readme.md", "requirements.txt", "agents.md"}
+    ignored_dirs = {"bin"}
     exit_code = 0
     for filename in os.listdir(root_dir):
         filepath = os.path.join(root_dir, filename)
+        if filename in ignored_dirs:
+            continue
         if not os.path.isfile(filepath):
             continue
         if filename.startswith("."):
