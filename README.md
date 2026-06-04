@@ -361,6 +361,9 @@ call.
 To run a different program, change `TESTCASE`/`TEST` (e.g. `blink` to first sanity-check the
 environment). Add `GUI=-gui` to `make run_sim` for the QuestaSim GUI.
 
+See [docs/edu4chip_examples.md](docs/edu4chip_examples.md) for the full Edu4Chip example
+instructions (QuestaSim, FPGA prototyping, OpenOCD, and the QuestaSim licensing note).
+
 ### FPGA flow (PYNQ-Z1)
 Builds the bitstream with Vivado, then loads the accelerator program onto the Ibex core over
 JTAG (FT4232H + OpenOCD).
