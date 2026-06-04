@@ -2,37 +2,62 @@ stages:
   - check
   - sim
 
-variables:
-  CHECK_PYTHON_IMAGE: python:3.13-slim
-  SIM_IMAGE: verilator/verilator:latest
+# The group5-runner host is a small 2 vCPU / 1 GB Azure VM. Two heavy sim
+# containers (Verilator build + cocotb) running concurrently exhaust its RAM
+# and wedge the box, so every job is interruptible and the sim jobs are
+# serialized via a shared resource_group with a hard timeout.
+default:
+  interruptible: true
 
+variables:
+  # Prebuilt CI images live locally on the group5-runner host (the LRZ GitLab
+  # instance has no Container Registry). They are built on the runner with:
+  #   docker build -f ci/check.Dockerfile -t group5-ci-check:latest .
+  #   docker build -f ci/sim.Dockerfile   -t group5-ci-sim:latest   .
+  # and consumed here via the runner's `pull_policy = ["if-not-present"]`, so
+  # the check/sim jobs run with no per-pipeline apt/pip install. Rebuild the
+  # images on the runner when ci/*.Dockerfile or requirements/* change.
+  CHECK_IMAGE: "group5-ci-check:latest"
+  SIM_IMAGE: "group5-ci-sim:latest"
+
+# ---------------------------------------------------------------------------
+# Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
+# ---------------------------------------------------------------------------
 check_conventions:
   stage: check
-  image: $CHECK_PYTHON_IMAGE
+  image: $CHECK_IMAGE
   script:
-    - pip install -r requirements/check.txt
     - python3 scripts/check_conventions.py
 
 check_python_format:
   stage: check
-  image: $CHECK_PYTHON_IMAGE
+  image: $CHECK_IMAGE
   script:
-    - pip install -r requirements/check.txt
     - ruff format --check .
 
 check_gitkeep:
   stage: check
-  image: $CHECK_PYTHON_IMAGE
+  image: $CHECK_IMAGE
   script:
     - python3 scripts/check_gitkeep.py
 
+# ---------------------------------------------------------------------------
+# Sim stage: Verilator + Python sim deps are baked into SIM_IMAGE.
+# ---------------------------------------------------------------------------
 cocotb_sim:
   stage: sim
-  image:
-    name: $SIM_IMAGE
-    entrypoint: [""]
-  before_script:
-    - apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-dev make g++
-    - pip3 install --break-system-packages -r requirements/sim.txt
+  image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 5m
   script:
     - pytest -vv sim/test_runner.py
+
+accel_verilator_sim:
+  stage: sim
+  image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 5m
+  script:
+    - ./sim/scripts/run_verilator.sh
+
+
