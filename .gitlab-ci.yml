@@ -2,6 +2,13 @@ stages:
   - check
   - sim
 
+# The group5-runner host is a small 2 vCPU / 1 GB Azure VM. Two heavy sim
+# containers (Verilator build + cocotb) running concurrently exhaust its RAM
+# and wedge the box, so every job is interruptible and the sim jobs are
+# serialized via a shared resource_group with a hard timeout.
+default:
+  interruptible: true
+
 variables:
   # Prebuilt CI images live locally on the group5-runner host (the LRZ GitLab
   # instance has no Container Registry). They are built on the runner with:
@@ -40,12 +47,16 @@ check_gitkeep:
 cocotb_sim:
   stage: sim
   image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 5m
   script:
     - pytest -vv sim/test_runner.py
 
 accel_verilator_sim:
   stage: sim
   image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 5m
   script:
     - ./sim/scripts/run_verilator.sh
 
