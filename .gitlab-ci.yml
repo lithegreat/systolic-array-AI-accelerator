@@ -5,10 +5,34 @@ stages:
 variables:
   CHECK_PYTHON_IMAGE: python:3.13-slim
   SIM_IMAGE: verilator/verilator:latest
+  # Keep pip/apt caches inside the project dir so GitLab can cache them.
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  APT_CACHE_DIR: "$CI_PROJECT_DIR/.cache/apt"
+
+# Shared cache for pip wheels and apt archives so we don't re-download
+# dependencies on every pipeline. Keyed on the requirement files so the cache
+# is only invalidated when dependencies actually change.
+.py_check_cache: &py_check_cache
+  key:
+    files:
+      - requirements/check.txt
+  paths:
+    - .cache/pip
+  policy: pull-push
+
+.sim_cache: &sim_cache
+  key:
+    files:
+      - requirements/sim.txt
+  paths:
+    - .cache/pip
+    - .cache/apt
+  policy: pull-push
 
 check_conventions:
   stage: check
   image: $CHECK_PYTHON_IMAGE
+  cache: *py_check_cache
   script:
     - pip install -r requirements/check.txt
     - python3 scripts/check_conventions.py
@@ -16,6 +40,7 @@ check_conventions:
 check_python_format:
   stage: check
   image: $CHECK_PYTHON_IMAGE
+  cache: *py_check_cache
   script:
     - pip install -r requirements/check.txt
     - ruff format --check .
@@ -31,8 +56,11 @@ cocotb_sim:
   image:
     name: $SIM_IMAGE
     entrypoint: [""]
+  cache: *sim_cache
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-dev make g++
+    - mkdir -p "$APT_CACHE_DIR"
+    - apt-get update
+    - apt-get -o dir::cache::archives="$APT_CACHE_DIR" install -y --no-install-recommends python3 python3-pip python3-dev make g++
     - pip3 install --break-system-packages -r requirements/sim.txt
   script:
     - pytest -vv sim/test_runner.py
@@ -42,8 +70,12 @@ accel_verilator_sim:
   image:
     name: $SIM_IMAGE
     entrypoint: [""]
+  cache: *sim_cache
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends make g++ bash
+    - mkdir -p "$APT_CACHE_DIR"
+    - apt-get update
+    - apt-get -o dir::cache::archives="$APT_CACHE_DIR" install -y --no-install-recommends make g++ bash
   script:
     - ./sim/scripts/run_verilator.sh
+
 
