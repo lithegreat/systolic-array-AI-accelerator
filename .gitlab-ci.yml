@@ -1,57 +1,17 @@
 stages:
-  - build
   - check
   - sim
 
 variables:
-  # Prebuilt CI images stored in the project's GitLab Container Registry.
-  # Built by the 'build' stage only when their Dockerfile or requirements
-  # change; the check/sim jobs then reuse them with no apt/pip install.
-  CHECK_IMAGE: "$CI_REGISTRY_IMAGE/ci-check:latest"
-  SIM_IMAGE: "$CI_REGISTRY_IMAGE/ci-sim:latest"
-
-# ---------------------------------------------------------------------------
-# Build stage: build the check/sim images once and push them to the registry.
-# Subsequent pipelines reuse the published images, so the check/sim jobs no
-# longer run apt-get/pip install (saves server bandwidth and CI time).
-# Jobs only run when the relevant Dockerfile or requirements file changes,
-# and can also be triggered manually.
-# ---------------------------------------------------------------------------
-.build_image:
-  stage: build
-  image: docker:27
-  services:
-    - docker:27-dind
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-  before_script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-
-build_check_image:
-  extends: .build_image
-  script:
-    - docker pull "$CHECK_IMAGE" || true
-    - docker build --cache-from "$CHECK_IMAGE" -f ci/check.Dockerfile -t "$CHECK_IMAGE" .
-    - docker push "$CHECK_IMAGE"
-  rules:
-    - changes:
-        - ci/check.Dockerfile
-        - requirements/check.txt
-    - when: manual
-      allow_failure: true
-
-build_sim_image:
-  extends: .build_image
-  script:
-    - docker pull "$SIM_IMAGE" || true
-    - docker build --cache-from "$SIM_IMAGE" -f ci/sim.Dockerfile -t "$SIM_IMAGE" .
-    - docker push "$SIM_IMAGE"
-  rules:
-    - changes:
-        - ci/sim.Dockerfile
-        - requirements/sim.txt
-    - when: manual
-      allow_failure: true
+  # Prebuilt CI images live locally on the group5-runner host (the LRZ GitLab
+  # instance has no Container Registry). They are built on the runner with:
+  #   docker build -f ci/check.Dockerfile -t group5-ci-check:latest .
+  #   docker build -f ci/sim.Dockerfile   -t group5-ci-sim:latest   .
+  # and consumed here via the runner's `pull_policy = ["if-not-present"]`, so
+  # the check/sim jobs run with no per-pipeline apt/pip install. Rebuild the
+  # images on the runner when ci/*.Dockerfile or requirements/* change.
+  CHECK_IMAGE: "group5-ci-check:latest"
+  SIM_IMAGE: "group5-ci-sim:latest"
 
 # ---------------------------------------------------------------------------
 # Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
