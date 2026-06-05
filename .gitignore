@@ -40,3 +40,7 @@ vsim.wlf
 *.summary
 *.dcp
 *.svf
+
+# CI: prebaked full-SoC dependency snapshot (generated, ~18M; never commit).
+# Regenerate with: cd Didactic-SoC && tar czf ../ci/soc-deps.tar.gz .bender vendor_ips
+ci/soc-deps.tar.gz

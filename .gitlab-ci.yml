@@ -19,6 +19,10 @@ variables:
   # images on the runner when ci/*.Dockerfile or requirements/* change.
   CHECK_IMAGE: "group5-ci-check:latest"
   SIM_IMAGE: "group5-ci-sim:latest"
+  # Full-SoC sim image: SIM_IMAGE + colorama + prebaked Didactic-SoC bender
+  # checkouts / vendored IPs. Built on the runner with:
+  #   docker build -f ci/soc.Dockerfile -t group5-ci-soc:latest .
+  SOC_IMAGE: "group5-ci-soc:latest"
 
 # ---------------------------------------------------------------------------
 # Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
@@ -59,5 +63,46 @@ accel_verilator_sim:
   timeout: 5m
   script:
     - ./sim/scripts/run_verilator.sh
+
+# ---------------------------------------------------------------------------
+# Full-SoC, bus-driven functional test: the Ibex core executes sw/accel/accel.c
+# and drives the accelerator through the real OBI/APB fabric (PASS when
+# accel_result == 0xACCE5500). This verilates the ENTIRE SoC (Ibex + fabric +
+# accelerator), which is heavy, so it is guarded:
+#   * runs only when accelerator RTL / the SoC integration changes,
+#   * serialized via the shared sim-runner resource_group,
+#   * single-threaded + output-split build (VERILATOR_JOBS=1) to bound peak RAM
+#     on the ~900 MB group5-runner host (a swapfile on the host absorbs the
+#     remaining headroom),
+#   * generous timeout because the constrained, swap-backed build is slow.
+# Needs the Didactic-SoC submodule checked out (non-recursive: its nested
+# Subsystem_* submodules use SSH and are not required for this build). The
+# bender/vendored dependencies are prebaked into SOC_IMAGE at /opt/soc-deps.
+# ---------------------------------------------------------------------------
+accel_soc_sim:
+  stage: sim
+  image: $SOC_IMAGE
+  resource_group: sim-runner
+  timeout: 30m
+  variables:
+    GIT_SUBMODULE_STRATEGY: normal
+    GIT_SUBMODULE_DEPTH: 1
+    VERILATOR_JOBS: "1"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &soc_paths
+        - rtl/**/*
+        - Didactic-SoC
+        - ci/soc.Dockerfile
+        - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *soc_paths
+  script:
+    # Restore the prebaked SoC dependencies into the freshly checked-out
+    # submodule working tree (both paths are gitignored, so absent after clone).
+    - cp -a /opt/soc-deps/.bender Didactic-SoC/.bender
+    - cp -a /opt/soc-deps/vendor_ips Didactic-SoC/vendor_ips
+    - cd Didactic-SoC && python3 ./verification/verilator/verilate_soc_accel.py
+
 
 
