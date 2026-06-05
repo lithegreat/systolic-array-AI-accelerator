@@ -390,7 +390,8 @@ make test TESTCASE=accel                                # -> build/fpga/sw/accel
 # 2. Synthesize, implement and generate the bitstream (z1 = PYNQ-Z1)
 module load xilinx/vivado/2024.1
 cd Didactic-SoC/fpga
-make all_xilinx                                         # batch; or 'make all_xilinx_gui'
+make all_xilinx ACCEL_DIM=8                             # 8x8 fits the PYNQ-Z1; default 16 overflows it
+#   (omit ACCEL_DIM for the default 16x16; use 'make all_xilinx_gui' for the GUI)
 ```
 
 Then program the board and run the core:
@@ -419,6 +420,10 @@ make load_elf TEST=accel
 > DSPs (100%), so the placer overflows and no bitstream is produced. Reduce the array size
 > (e.g. 8x8) or target a larger device to generate a bitstream. See
 > [docs/edu4chip_examples.md](docs/edu4chip_examples.md) for the full report.
+>
+> The physical array size is selectable at synthesis via `ACCEL_DIM` (default 16):
+> `make all_xilinx ACCEL_DIM=8` builds an **8x8 bitstream that fits the PYNQ-Z1** (verified:
+> 47% LUTs, 30% DSPs, place + route + `write_bitstream` all pass, producing `DidacticZ1.bit`).
 
 ## CI and pre-commit
 This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
