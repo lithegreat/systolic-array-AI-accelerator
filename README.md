@@ -255,9 +255,17 @@ no Ibex core, and no RISC-V program.
 # Verilator 5.x (with --timing). Builds accelerator_top + tb_accel and prints PASS/FAIL.
 ./sim/scripts/run_verilator.sh
 
+# Select the systolic-array size (M=N=K); default is 16x16.
+./sim/scripts/run_verilator.sh --dim 8     # test the 8x8 array (matches the PYNQ-Z1 bitstream)
+
 # Optionally dump waves to sim/waves/
 ./sim/scripts/run_verilator.sh --trace
+./sim/scripts/run_verilator.sh --dim 8 --trace
 ```
+
+Both sizes are verified: `--dim 8` -> `All 64 C elements == 8, PASS`; default 16x16 ->
+`All 256 C elements == 16, PASS`. The `--dim` value sets the `ACCEL_DIM` Verilog define,
+matching the `make all_xilinx ACCEL_DIM=<N>` bitstream option.
 
 A Vivado/xsim runner is also provided for environments that have the Xilinx tools:
 
