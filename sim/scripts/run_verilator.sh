@@ -7,8 +7,10 @@
 # sim/testbenches/tb_accel.sv against accelerator_top and prints PASS/FAIL.
 #
 # Usage:
-#   ./sim/scripts/run_verilator.sh           # build + run
-#   ./sim/scripts/run_verilator.sh --trace   # also dump waves to sim/waves/
+#   ./sim/scripts/run_verilator.sh                # build + run (16x16 default)
+#   ./sim/scripts/run_verilator.sh --dim 8        # build + run an 8x8 array
+#   ./sim/scripts/run_verilator.sh --trace        # also dump waves to sim/waves/
+#   ./sim/scripts/run_verilator.sh --dim 8 --trace
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -23,11 +25,33 @@ fi
 
 TRACE_ARGS=()
 RUN_ARGS=()
-if [[ "${1:-}" == "--trace" ]]; then
-    mkdir -p sim/waves
-    TRACE_ARGS=(--trace)
-    RUN_ARGS=(+trace)
-fi
+DIM_ARGS=()
+ACCEL_DIM=""
+while [[ $# -gt 0 ]]; do
+    case "${1}" in
+        --trace)
+            mkdir -p sim/waves
+            TRACE_ARGS=(--trace)
+            RUN_ARGS=(+trace)
+            shift
+            ;;
+        --dim)
+            ACCEL_DIM="${2:?--dim requires a value, e.g. --dim 8}"
+            DIM_ARGS=(-DACCEL_DIM="${ACCEL_DIM}")
+            shift 2
+            ;;
+        --dim=*)
+            ACCEL_DIM="${1#*=}"
+            DIM_ARGS=(-DACCEL_DIM="${ACCEL_DIM}")
+            shift
+            ;;
+        *)
+            echo "ERROR: unknown argument '${1}' (expected --dim <N> and/or --trace)." >&2
+            exit 1
+            ;;
+    esac
+done
+echo "==> Accelerator array size: ${ACCEL_DIM:-16 (default)}"
 
 WARN_SUPPRESS=(
     -Wno-WIDTH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE -Wno-WIDTHEXPAND
@@ -37,7 +61,7 @@ WARN_SUPPRESS=(
 
 echo "==> Building with Verilator"
 rm -rf sim/veri_work
-verilator --binary --timing --timescale 1ns/1ps "${WARN_SUPPRESS[@]}" "${TRACE_ARGS[@]}" \
+verilator --binary --timing --timescale 1ns/1ps "${WARN_SUPPRESS[@]}" "${TRACE_ARGS[@]}" "${DIM_ARGS[@]}" \
     --top-module tb_accel \
     -Irtl/include \
     -Mdir sim/veri_work \
