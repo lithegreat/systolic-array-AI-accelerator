@@ -17,12 +17,19 @@
 
 module tb_accel;
 
+    // Physical array size (M=N=K). Override at compile time with
+    // +define+ACCEL_DIM=8 (Verilator: -DACCEL_DIM=8) to test the 8x8 build;
+    // defaults to 16 to match accelerator_top / the golden model.
+`ifndef ACCEL_DIM
+  `define ACCEL_DIM 16
+`endif
+
     // Match accelerator_top default parameters.
     localparam int unsigned DATA_W = 16;
     localparam int unsigned ACC_W  = 32;
-    localparam int unsigned M      = 16;
-    localparam int unsigned N      = 16;
-    localparam int unsigned K      = 16;
+    localparam int unsigned M      = `ACCEL_DIM;
+    localparam int unsigned N      = `ACCEL_DIM;
+    localparam int unsigned K      = `ACCEL_DIM;
     localparam int unsigned APB_AW = 10;
     localparam int unsigned APB_DW = 32;
 

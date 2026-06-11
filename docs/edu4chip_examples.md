@@ -31,8 +31,9 @@ Relevant modules:
 
 > **One-command path.** `scripts/lab_server_sim.sh [TESTCASE]` (default
 > `accel`) runs the whole flow below — `repository_init`, the baremetal build,
-> and compile + elaborate inside the container — and also runs `run_sim` when
-> `MGLS_LICENSE_FILE` is set. The manual steps are kept here for reference.
+> and compile + elaborate + run_sim inside the container. `run_sim` needs a
+> Mentor license reachable from the environment (see below). The manual steps
+> are kept here for reference.
 
 - Load the QuestaSim environment module: `module load mentor/questasim/2023.4`.
 - Because of a binary incompatibility with Ubuntu 24.04, the simulation must run
@@ -125,6 +126,20 @@ server with the accelerator integrated into the SoC. Results:
   `rtl/include/accel_pkg.sv`) saturates all 220 DSPs and pushes total LUT usage
   past 100%. To generate a bitstream, reduce the array dimensions (e.g. 8x8) or
   target a larger device.
+- **Selecting the array size at synthesis (`ACCEL_DIM`)**: the physical array
+  dimension (M=N=K) is set with the `ACCEL_DIM` make/Verilog define, defaulting
+  to 16. Build an 8x8 bitstream that fits the PYNQ-Z1 with:
+
+  ```bash
+  cd Didactic-SoC/fpga
+  make all_xilinx ACCEL_DIM=8
+  ```
+
+  Verified result for `ACCEL_DIM=8`: place + route + `write_bitstream` all
+  complete (25159/53200 LUTs = 47%, 65/220 DSPs = 30%), producing
+  `build/fpga/z1/didactic-z1.runs/impl_1/DidacticZ1.bit` (+`.bin`). Runtime
+  matrix dimensions written via the APB regmap must stay <= the chosen
+  `ACCEL_DIM`.
 
 > Note: `Didactic-SoC/fpga/scripts/run_xilinx.tcl` hardcodes the synthesis
 > include paths (like the sim Makefile). The accelerator's `rtl/include` was

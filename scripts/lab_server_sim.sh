@@ -6,7 +6,8 @@
 #
 # Usage (on the lab server, from anywhere in the repo):
 #   bash scripts/lab_server_sim.sh [TESTCASE]
-#   TESTCASE defaults to "accel". Set MGLS_LICENSE_FILE to also run run_sim.
+#   TESTCASE defaults to "accel". run_sim always runs (a Mentor license must
+#   be available in the environment / container, e.g. via MGLS_LICENSE_FILE).
 #
 # How this differs from the official Edu4Chip_setup.sh:
 #   * Official builds a fresh tree in ~/Edu4Chip: downloads bender into
@@ -28,8 +29,8 @@
 #   * Official switches the sim Makefile to GUI (`sed 92s/-c/-gui`); we keep CLI
 #     (headless) so it runs over SSH. Pass GUI=-gui yourself if you want the GUI.
 #   * run_sim needs a Mentor license, which neither the lab modules nor the
-#     official script set. This script skips run_sim unless MGLS_LICENSE_FILE
-#     is exported (see docs/edu4chip_examples.md).
+#     official script set; ensure one is reachable from the environment /
+#     container (see docs/edu4chip_examples.md).
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -72,25 +73,14 @@ module unload eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
 # --- QuestaSim phase, inside the alma.sif container ---------------------------
 module load mentor/questasim/2023.4
 
-# run_sim is only attempted when a license server is available.
-RUN_SIM_CMD="echo '>> skipping run_sim: MGLS_LICENSE_FILE not set (compile+elaborate already prove integration)'"
-LIC_ENV=()
-if [ -n "${MGLS_LICENSE_FILE:-}" ]; then
-    RUN_SIM_CMD="make run_sim TESTCASE=$TESTCASE ${GUI:+GUI=$GUI}"
-    LIC_ENV=(--env MGLS_LICENSE_FILE)
-    echo "== license:  MGLS_LICENSE_FILE is set -> run_sim will execute"
-else
-    echo "== license:  MGLS_LICENSE_FILE not set -> run_sim will be skipped"
-fi
-
-apptainer exec --env PATH="$PATH" "${LIC_ENV[@]}" \
+apptainer exec --env PATH="$PATH" \
     --bind /nas:/nas --bind /nfs:/nfs --bind /data:/data --bind /tmp:/tmp --bind "$HOME:$HOME" \
     "$SIF" bash -c "
         set -e
         cd '$SOC_DIR/sim'
         make compile
         make elaborate TESTCASE='$TESTCASE'
-        $RUN_SIM_CMD
+        make run_sim TESTCASE='$TESTCASE' ${GUI:+GUI=$GUI}
     "
 
 echo "== done."
