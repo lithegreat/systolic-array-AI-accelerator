@@ -6,8 +6,9 @@
 #
 # Usage (on the lab server, from anywhere in the repo):
 #   bash scripts/lab_server_sim.sh [TESTCASE]
-#   TESTCASE defaults to "accel". run_sim always runs (a Mentor license must
-#   be available in the environment / container, e.g. via MGLS_LICENSE_FILE).
+#   TESTCASE defaults to "accel". run_sim always runs; the script defaults
+#   LM_LICENSE_FILE to the TUM EI lab license servers and forwards it into the
+#   container (override by exporting LM_LICENSE_FILE before running).
 #
 # How this differs from the official Edu4Chip_setup.sh:
 #   * Official builds a fresh tree in ~/Edu4Chip: downloads bender into
@@ -29,8 +30,9 @@
 #   * Official switches the sim Makefile to GUI (`sed 92s/-c/-gui`); we keep CLI
 #     (headless) so it runs over SSH. Pass GUI=-gui yourself if you want the GUI.
 #   * run_sim needs a Mentor license, which neither the lab modules nor the
-#     official script set; ensure one is reachable from the environment /
-#     container (see docs/edu4chip_examples.md).
+#     official script set. This script defaults LM_LICENSE_FILE (and
+#     MGLS_LICENSE_FILE) to the TUM EI lab servers and forwards them into the
+#     container; export your own before running to override.
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -73,14 +75,31 @@ module unload eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
 # --- QuestaSim phase, inside the alma.sif container ---------------------------
 module load mentor/questasim/2023.4
 
-apptainer exec --env PATH="$PATH" \
+# QuestaSim/Mentor license. Honor a pre-set LM_LICENSE_FILE/MGLS_LICENSE_FILE;
+# otherwise default to the TUM EI lab license servers. The host shell that
+# launches this script may not have it set (e.g. lx01), and the alma.sif env is
+# otherwise clean, so default it here and forward it INTO the container.
+: "${LM_LICENSE_FILE:=27000@license.lis.ei.tum.de:1717@license.lis.ei.tum.de}"
+: "${MGLS_LICENSE_FILE:=$LM_LICENSE_FILE}"
+export LM_LICENSE_FILE MGLS_LICENSE_FILE
+echo "== license:  LM_LICENSE_FILE=$LM_LICENSE_FILE"
+
+# Headless run: drive the sim to completion and quit (the SoC sim Makefile
+# otherwise defaults to a GUI-friendly "run 0ms;"). Override with RUN_CMD=...
+RUN_CMD="${RUN_CMD:-run -all; quit -f}"
+echo "== run_cmd:  $RUN_CMD"
+
+apptainer exec \
+    --env PATH="$PATH" \
+    --env LM_LICENSE_FILE="$LM_LICENSE_FILE" \
+    --env MGLS_LICENSE_FILE="$MGLS_LICENSE_FILE" \
     --bind /nas:/nas --bind /nfs:/nfs --bind /data:/data --bind /tmp:/tmp --bind "$HOME:$HOME" \
     "$SIF" bash -c "
         set -e
         cd '$SOC_DIR/sim'
         make compile
         make elaborate TESTCASE='$TESTCASE'
-        make run_sim TESTCASE='$TESTCASE' ${GUI:+GUI=$GUI}
+        make run_sim TESTCASE='$TESTCASE' ${GUI:+GUI=$GUI} RUN_CMD='$RUN_CMD'
     "
 
 echo "== done."
