@@ -1,26 +1,22 @@
-# Module Interface Specification
+# Systolic Array Interface
 
-Issue #3.
+> The compute core: an M×N grid of MAC processing elements that consumes streamed
+> A columns and B rows, accumulates each `C[i,j]` in place (output-stationary), and
+> drains the result one full row per beat.
 
-## Systolic Array Top-Level Interface 
+- **Module:** `systolic_array`
+- **Source:** [`rtl/array/systolic_array.sv`](../../rtl/array/systolic_array.sv)
+- **Owner:** Zhong (#3)
 
-### Module name
-`systolic_array`
+## Overview
 
-### block diagram
-                     +---------------------------+
-       start ------->|                           |
-    in_valid ------->|                           |-----> out_valid
-    in_ready <-------|      systolic_array       |<----- out_ready
-                     |       (M=4, N=4, K=4)     |-----> done
-                     |                           |
-      a_data =======>|                           |=======> c_row_data
-      b_data =======>|                           |=======> c_row
-                     |                           |
-                     +---------------------------+
-                           ^       ^
-                           |       |
-                          clk    rst_n
+`systolic_array` instantiates an M×N grid of [`mac_pe`](mac_if.md) cells. Matrix A
+and Matrix B are streamed in lockstep, one `(a_col, b_row)` pair per accepted beat.
+Internal skew chains delay row `i` by `i` cycles and column `j` by `j` cycles so the
+operands meet at the right PE at the right time. Each PE accumulates over `K` valid
+beats, then the array drains the result one C row per beat, top row first.
+
+## Block diagram
 
 ```mermaid
 flowchart LR
@@ -70,60 +66,65 @@ flowchart LR
    style INPUTS fill:#f5f5f5,stroke:#999
    style OUTPUTS fill:#f5f5f5,stroke:#999
 ```
-                          
-### Parameters
-- `DATA_W` (default 16): data/weight bit-width, signed integer.
-- `ACC_W` (default 32): accumulator/output width.
-- `M` (default 4): output rows.
-- `N` (default 4): output cols.
-- `K` (default 4): reduction dimension.
 
-### Clock/Reset
-- `clk`: system clock.
-- `rst_n`: active-low synchronous reset.
+## Parameters
 
-### Control and Handshake
-- `start`: pulse to begin one MxN output tile computation.
-- `in_valid`: input vector beat valid for the current cycle.
-- `in_ready`: systolic array can accept an input vector beat this cycle.
-- `out_valid`: output data valid for the current cycle.
-- `out_ready`: downstream can accept output data this cycle.
-- `done`: pulse when the tile is fully produced.
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `DATA_W` | `8` | Signed data/weight bit-width (INT8 baseline; configurable to `8`/`16`/`32`). |
+| `ACC_W` | `32` | Accumulator / output width. |
+| `M` | `16` | Output rows (A rows). |
+| `N` | `16` | Output columns (B columns). |
+| `K` | `16` | Reduction dimension (number of stream beats per tile). |
 
-### Data Inputs
-Inputs are provided by Matrix A and Matrix B modules in lockstep. For each cycle
-where `in_valid && in_ready`, both `a_col` and `b_row` are consumed.
+## Ports
 
-- `a_col[M*DATA_W-1:0]`: packed signed column vector from Matrix A for the current `k`.
-- `b_row[N*DATA_W-1:0]`: packed signed row vector from Matrix B for the current `k`.
+### Clock & reset
 
-### Data Outputs
-For each cycle where `out_valid && out_ready`, one full C row is produced with
-its row index. The array drains `M` beats total (top row first).
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `clk` | Input | `1` | System clock. |
+| `rst_n` | Input | `1` | Active-low synchronous reset. |
 
-- `c_row_data[N*ACC_W-1:0]`: packed signed accumulation results for the row
-  (column 0 in the low bits, column `N-1` in the high bits).
-- `c_row[$clog2(M)-1:0]`: row index of `c_row_data`.
+### Control & handshake
 
-### Output-Stationary Dataflow
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `start` | Input | `1` | Pulse that launches one M×N output tile. Sampled in `IDLE`. |
+| `in_valid` | Input | `1` | Input beat valid this cycle. |
+| `in_ready` | Output | `1` | Array can accept an input beat this cycle. |
+| `out_valid` | Output | `1` | Output row valid this cycle. |
+| `out_ready` | Input | `1` | Downstream can accept the output row this cycle. |
+| `done` | Output | `1` | One-cycle pulse after the last C row is accepted. |
+
+### Data
+
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `a_col` | Input | `M*DATA_W` | Packed signed A column for the current `k`. |
+| `b_row` | Input | `N*DATA_W` | Packed signed B row for the current `k`. |
+| `c_row_data` | Output | `N*ACC_W` | Packed signed C row (column 0 in the low bits, column `N-1` in the high bits). |
+| `c_row` | Output | `$clog2(M)` | Row index of `c_row_data`. |
+
+## Behavior
+
+### Output-stationary dataflow
+
 - Each PE owns one `C[i,j]` accumulator.
 - One input beat supplies the whole A column `A[:,k]` and the whole B row `B[k,:]`.
-- Internal skew shift chains delay row `i` by `i` cycles and column `j` by `j` cycles.
-- Each PE accumulates for exactly `K` valid windows, then the array drains results one row per beat in top-to-bottom order.
+- Skew shift chains delay row `i` by `i` cycles and column `j` by `j` cycles.
+- Each PE accumulates over exactly `K` valid windows, then the array drains results one row per beat, top to bottom.
+- The compute phase lasts `M + N + K − 2` internal pipeline cycles before drain starts.
 
-### Timing Notes (Handshake)
-- `start` is sampled in `IDLE` and launches one tile.
-- `in_valid` may remain high across cycles; if `in_ready` is low, inputs are
-	stalled and must be held stable.
-- `out_valid` may remain high across cycles; if `out_ready` is low, outputs are
-	stalled and must be held stable.
+### Handshake & timing
+
+- A beat is consumed only when `in_valid && in_ready`; A and B are consumed together.
+- `in_valid` / `out_valid` may stay high across cycles; if the matching `*_ready` is low, the data is stalled and must be held stable.
+- One output row (N elements) is produced per ready cycle after the pipeline latency.
 - `done` asserts for one cycle after the last C row is accepted.
-- The compute phase lasts `M + N + K - 2` internal pipeline cycles before drain starts.
 
-### Assumptions
-- Matrix A/B modules provide one aligned pair `(a_col, b_row)` per accepted beat.
-- One output row (N elements) is produced per cycle when ready, after pipeline latency.
+## Notes
 
-### Notes
-- The current implementation drains `C` in row-major order.
-- The current implementation assumes `M` and `N` are powers of two for drain index decoding.
+- C drains in row-major order.
+- Drain index decoding assumes `M` and `N` are powers of two.
+- Assumes the A/B buffer provides one aligned `(a_col, b_row)` pair per accepted beat.

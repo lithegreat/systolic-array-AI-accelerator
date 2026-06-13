@@ -24,8 +24,14 @@ module tb_accel;
   `define ACCEL_DIM 16
 `endif
 
+    // Element bit-width. INT8 baseline; override with +define+ACCEL_DATA_W=16
+    // (Verilator: -DACCEL_DATA_W=16) to exercise a wider datapath.
+`ifndef ACCEL_DATA_W
+  `define ACCEL_DATA_W 8
+`endif
+
     // Match accelerator_top default parameters.
-    localparam int unsigned DATA_W = 16;
+    localparam int unsigned DATA_W = `ACCEL_DATA_W;
     localparam int unsigned ACC_W  = 32;
     localparam int unsigned M      = `ACCEL_DIM;
     localparam int unsigned N      = `ACCEL_DIM;
@@ -33,7 +39,12 @@ module tb_accel;
     localparam int unsigned APB_AW = 10;
     localparam int unsigned APB_DW = 32;
 
-    localparam int unsigned EPW = APB_DW / DATA_W; // elements per APB word = 2
+    localparam int unsigned EPW = APB_DW / DATA_W; // elements per APB word (DATA_W=8 -> 4)
+
+    // A/B fill word: value 1 in every DATA_W-bit lane, so each streamed element
+    // is 1 regardless of width (=> C[i][j] = K). Width-generic replacement for
+    // the old 16-bit-specific 0x0001_0001 literal.
+    localparam logic [APB_DW-1:0] ONES_WORD = {EPW{DATA_W'(1)}};
 
     // Address map inside the subsystem window (PADDR[9:8] decode).
     localparam logic [APB_AW-1:0] ADDR_A      = 10'h000; // matrix_buffer_ab : A
@@ -155,14 +166,14 @@ module tb_accel;
         // 1. Reset A/B write pointers.
         apb_write(ADDR_AB_CTL, 32'h0000_0001);
 
-        // 2. Stream Matrix A = all ones (two 16-bit lanes per word -> 0x0001_0001).
+        // 2. Stream Matrix A = all ones (1 in every DATA_W-bit lane).
         for (i = 0; i < (M*K)/EPW; i = i + 1) begin
-            apb_write(ADDR_A, 32'h0001_0001);
+            apb_write(ADDR_A, ONES_WORD);
         end
 
         // 3. Stream Matrix B = all ones.
         for (i = 0; i < (K*N)/EPW; i = i + 1) begin
-            apb_write(ADDR_B, 32'h0001_0001);
+            apb_write(ADDR_B, ONES_WORD);
         end
 
         // 4. Reset C capture/read pointer.

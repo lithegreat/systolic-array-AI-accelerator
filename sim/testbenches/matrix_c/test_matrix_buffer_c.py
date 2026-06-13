@@ -6,12 +6,11 @@ import os
 import random
 
 import cocotb
-import numpy as np
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge
 
 from apb_bfm import ApbMaster
-from golden import to_signed, to_unsigned
+from golden import to_unsigned
 
 M = int(os.environ.get("M", "16"))
 N = int(os.environ.get("N", "16"))

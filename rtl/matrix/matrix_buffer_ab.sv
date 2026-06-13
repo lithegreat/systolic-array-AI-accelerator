@@ -23,7 +23,7 @@
 module matrix_buffer_ab
     import accel_pkg::*;
 #(
-    parameter int unsigned DATA_W = 16,
+    parameter int unsigned DATA_W = 8,
     parameter int unsigned M      = 16,
     parameter int unsigned N      = 16,
     parameter int unsigned K      = 16,

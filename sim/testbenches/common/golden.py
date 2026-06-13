@@ -8,7 +8,7 @@ of the RTL accumulator (DATA_W signed inputs, ACC_W signed accumulator).
 from __future__ import annotations
 
 import random
-from typing import Iterable, List, Tuple
+from typing import Iterable, List
 
 import numpy as np
 
