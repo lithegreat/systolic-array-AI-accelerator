@@ -73,9 +73,9 @@ flowchart LR
 | --- | --- | --- |
 | `DATA_W` | `16` | Signed data/weight bit-width. |
 | `ACC_W` | `32` | Accumulator / output width. |
-| `M` | `4` | Output rows (A rows). |
-| `N` | `4` | Output columns (B columns). |
-| `K` | `4` | Reduction dimension (number of stream beats per tile). |
+| `M` | `16` | Output rows (A rows). |
+| `N` | `16` | Output columns (B columns). |
+| `K` | `16` | Reduction dimension (number of stream beats per tile). |
 
 ## Ports
 

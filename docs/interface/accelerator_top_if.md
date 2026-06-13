@@ -73,7 +73,7 @@ flowchart TB
       skew -- "sys_ready" --> streamer
 
       drain -- "out_valid\nc_row_data / c_row" --> mem_c
-      mem_c -- "c_in_ready" --> drain
+      mem_c -. "out_ready = 1\n(always ready)" .-> drain
    end
 
    apb_m -- "PADDR / PSEL / PENABLE\nPWRITE / PWDATA" --> decode
@@ -96,9 +96,9 @@ flowchart TB
 | --- | --- | --- |
 | `DATA_W` | `16` | Bit-width for Matrix A/B data elements. |
 | `ACC_W` | `32` | Bit-width for Matrix C accumulation results. |
-| `M` | `4` | Rows in the array and buffers. |
-| `N` | `4` | Columns in the array and buffers. |
-| `K` | `4` | Reduction-dimension length. |
+| `M` | `16` | Rows in the array and buffers. |
+| `N` | `16` | Columns in the array and buffers. |
+| `K` | `16` | Reduction-dimension length. |
 | `APB_AW` | `10` | APB address width. |
 | `APB_DW` | `32` | APB data width. |
 
@@ -132,19 +132,16 @@ Quick read:
 
 | Signal | Source | Sink | Description |
 | --- | --- | --- | --- |
-| `array_start` | `control_unit` | `matrix_buffer_ab`, `systolic_array` | One-cycle launch pulse for a tile. |
-| `array_clear` | `control_unit` | internal / compatibility path | Clear pulse aligned with `array_start`. |
+| `array_start` | `control_unit` | `matrix_buffer_ab` (`mat_start`), `systolic_array` (`start`) | One-cycle launch pulse for a tile. |
+| `array_clear` | `control_unit` | tied to an unused tap | Clear pulse aligned with `array_start`. The array self-clears its accumulators, so this top-level tap is intentionally unused. |
 | `array_done` | `systolic_array` | `control_unit` | Completion pulse from the array. |
-| `mat_valid` | `matrix_buffer_ab` | `systolic_array` | Valid beat for `a_col` and `b_row`. |
-| `sys_ready` | `systolic_array` | `matrix_buffer_ab` | Consume-ready handshake for streamed inputs. |
+| `mat_valid` | `matrix_buffer_ab` | `systolic_array` (`in_valid`) | Valid beat for `a_col` and `b_row`. |
+| `sys_ready` | `systolic_array` (`in_ready`) | `matrix_buffer_ab` | Consume-ready handshake for streamed inputs. |
 | `a_col` | `matrix_buffer_ab` | `systolic_array` | Packed A column vector. |
 | `b_row` | `matrix_buffer_ab` | `systolic_array` | Packed B row vector. |
-| `out_valid` | `systolic_array` | `matrix_buffer_c` | Valid C output row. |
-| `c_row_data`, `c_row` | `systolic_array` | `matrix_buffer_c` | Captured C row (N accumulators) and its row index. |
-| `cfg_m`, `cfg_n`, `cfg_k` | `control_unit` | unused in top | Exported config dimensions (unused, to avoid lint warnings). |
-| `soft_reset_unused` | `control_unit` | unused in top | Exported soft reset (unused). |
-| `mat_done` | `matrix_buffer_ab` | unused in top | Done pulse from the A/B buffer (unused). |
-| `cap_full` | `matrix_buffer_c` | unused in top | Capture-full flag (unused). |
+| `out_valid` | `systolic_array` | `matrix_buffer_c` (`c_in_valid`) | Valid C output row. |
+| `out_ready` | tied `1'b1` | `systolic_array` | Capture buffer is always ready in v1. |
+| `c_row_data`, `c_row` | `systolic_array` | `matrix_buffer_c` (`c_row_data_in`, `c_row_in`) | Captured C row (N accumulators) and its row index. |
 
 ## Behavior
 
@@ -223,8 +220,7 @@ flowchart TB
 
    ctrl["<b>control_unit</b>
 array_start, array_clear
-array_done
-cfg_m/n/k"]
+array_done"]
 
    array["<b>systolic_array</b>
 start, done"]
@@ -310,5 +306,7 @@ flowchart TB
 
 ## Notes
 
-- In v1, `PREADY` is effectively driven by the selected sub-block, or deasserted when no sub-block is selected.
-- `out_ready` is tied high at the top level, so Matrix C capture is always ready in v1.
+- `PREADY` always terminates the transfer: it is asserted when the selected sub-block is ready (the sub-blocks are zero-wait), when an unmapped region (`PADDR[9:8] == 2'b11`) is accessed, and when `PSEL` is low.
+- `PSLVERR` is driven by the selected sub-block, and is also asserted for an access to an unmapped region.
+- `out_ready` is tied high at the top level, so Matrix C capture is always ready in v1; reset the C buffer (`MAT_CTRL[0]`) before each tile.
+- `array_clear` is provided by `control_unit` for interface compatibility but is left unconnected at the top, since the array self-clears its accumulators.

@@ -40,11 +40,6 @@ flowchart TB
       rd_ptr --> decode_apb
    end
 
-   subgraph CAPTURE_OUT["Capture Handshake"]
-      cr_o(["c_in_ready"])
-      cf_o(["capture_full"])
-   end
-
    subgraph APB_IN["APB Interface"]
       pa_i(["PADDR[7:0]"])
       ps_i(["PSEL / PENABLE / PWRITE"])
@@ -52,14 +47,12 @@ flowchart TB
    end
 
    subgraph APB_OUT["APB Read Back"]
-      pr_o(["PRDATA\nPREADY / PSLVERR"])
+      pr_o(["PRDATA\nPREADY / PSLVERR\ncapture_full via MAT_CTRL[1]"])
    end
 
    cv_i --> addr_calc
    cd_i --> mem_c
    cr_i --> addr_calc
-   cap_cnt --> cr_o
-   cap_cnt --> cf_o
 
    pa_i --> decode_apb
    ps_i --> decode_apb
@@ -68,7 +61,6 @@ flowchart TB
 
    style MC fill:#fff9c4,stroke:#f9a825
    style CAPTURE_IN fill:#bbdefb,stroke:#1976d2
-   style CAPTURE_OUT fill:#bbdefb,stroke:#1976d2
    style APB_IN fill:#f5f5f5,stroke:#999
    style APB_OUT fill:#f5f5f5,stroke:#999
 ```
@@ -78,8 +70,8 @@ flowchart TB
 | Parameter | Default | Description |
 | --- | --- | --- |
 | `ACC_W` | `32` | Captured accumulator width. |
-| `M` | `4` | Output rows. |
-| `N` | `4` | Output columns. |
+| `M` | `16` | Output rows. |
+| `N` | `16` | Output columns. |
 | `APB_AW` | `10` | APB address width. |
 | `APB_DW` | `32` | APB data width. |
 
@@ -104,11 +96,15 @@ flowchart TB
 
 | Port | Direction | Width | Description |
 | --- | --- | --- | --- |
-| `c_in_valid` | Input | `1` | Incoming C row valid. |
-| `c_in_ready` | Output | `1` | Capture ready; deasserts once all M rows are captured. |
+| `c_in_valid` | Input | `1` | Incoming C row valid. The row is captured when valid and the buffer is not yet full (fewer than `M` rows captured). |
 | `c_row_data_in` | Input | `N*ACC_W` | Packed C row (N accumulators, column 0 in the low bits). |
 | `c_row_in` | Input | `$clog2(max(M,2))` | Row index of `c_row_data_in`. |
-| `capture_full` | Output | `1` | High once all `M` rows have been accepted since the last reset. |
+
+> The capture path has no `ready`/back-pressure output port: the buffer simply
+> accepts the first `M` rows after reset and ignores any further `c_in_valid`
+> beats. "Full" is observable to software through `MAT_CTRL` bit `1` (see the
+> register map). Internally these are the `c_in_ready = (rows_captured < M)` and
+> `capture_full = (rows_captured >= M)` conditions.
 
 ## Register map
 
@@ -120,9 +116,11 @@ flowchart TB
 ## Behavior
 
 - Storage is row-major: `C[i,j]` reads back in the order `(0,0)`, `(0,1)`, …, `(M-1,N-1)`.
-- `c_in_ready` stays high until all `M` rows have been accepted.
+- The buffer captures incoming rows while fewer than `M` rows have been stored since the last reset; once full it ignores further `c_in_valid` beats.
 - Reading `MAT_C_DATA` returns the low `APB_DW` bits of the stored `ACC_W` value.
+- A full C row is written in a single cycle (all N columns at once).
 
 ## Notes
 
-- A full C row is written in a single cycle (all N columns at once).
+- `c_in_ready` and `capture_full` are internal status conditions, not module ports; software observes "full" via `MAT_CTRL` bit `1`.
+- In the top-level integration the array's `out_ready` is tied high, so the buffer must be reset (via `MAT_CTRL[0]`) before each new tile to accept all `M` rows.

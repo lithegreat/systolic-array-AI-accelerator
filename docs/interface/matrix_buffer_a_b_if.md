@@ -53,7 +53,6 @@ flowchart TB
 
    subgraph STREAM_OUT["Streaming Output"]
       mat_valid_o(["mat_valid"])
-      mat_done_o(["mat_done\n(1-cycle pulse)"])
       acol_o(["a_col\n[M×DATA_W-1:0]"])
       brow_o(["b_row\n[N×DATA_W-1:0]"])
    end
@@ -67,7 +66,6 @@ flowchart TB
    sys_ready_i --> streamer
 
    streamer --> mat_valid_o
-   streamer --> mat_done_o
    streamer --> acol_o
    streamer --> brow_o
 
@@ -83,9 +81,9 @@ flowchart TB
 | Parameter | Default | Description |
 | --- | --- | --- |
 | `DATA_W` | `16` | Element bit-width. The unpacking logic supports any width that divides 32 evenly; verification uses `16`. |
-| `M` | `4` | Output rows / A rows. |
-| `N` | `4` | Output columns / B columns. |
-| `K` | `4` | Reduction dimension (stream beats per tile). |
+| `M` | `16` | Output rows / A rows. |
+| `N` | `16` | Output columns / B columns. |
+| `K` | `16` | Reduction dimension (stream beats per tile). |
 | `APB_AW` | `10` | APB address width. |
 | `APB_DW` | `32` | APB data width. |
 
@@ -111,7 +109,6 @@ flowchart TB
 | Port | Direction | Width | Description |
 | --- | --- | --- | --- |
 | `mat_start` | Input | `1` | One-cycle pulse that starts a K-beat stream. |
-| `mat_done` | Output | `1` | One-cycle pulse after the last beat is accepted. |
 | `mat_valid` | Output | `1` | Stream beat valid. |
 | `sys_ready` | Input | `1` | Systolic array ready to consume a beat. |
 | `a_col` | Output | `M*DATA_W` | Packed A column for the current `k`. |

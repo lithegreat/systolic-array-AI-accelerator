@@ -56,7 +56,6 @@ flowchart LR
    fsm -- "array_start\narray_clear" --> arr
    done_in --> fsm
 
-   fsm -- "cfg_m/n/k\nsoft_reset" --> ACCEL
    irqlogic -- "irq_4" --> irq_s
 
    style CU fill:#e1f5ff,stroke:#0288d1
@@ -107,10 +106,6 @@ stateDiagram-v2
 | `array_start` | Output | `1` | One-cycle start pulse to the systolic array and A/B streamer. |
 | `array_clear` | Output | `1` | One-cycle clear pulse aligned with `array_start`. |
 | `array_done` | Input | `1` | One-cycle completion pulse from the systolic array. |
-| `cfg_m_dim` | Output | `APB_DW` | Exposed M-dimension register value. |
-| `cfg_n_dim` | Output | `APB_DW` | Exposed N-dimension register value. |
-| `cfg_k_dim` | Output | `APB_DW` | Exposed K-dimension register value. |
-| `soft_reset` | Output | `1` | Current software soft-reset bit state. |
 
 ## Register map
 
@@ -120,11 +115,11 @@ The unit decodes registers using `PADDR[7:0]`, so it can sit behind a top-level 
 | --- | --- | --- | --- |
 | `0x00` | `CTRL` | R/W | Bit `0`: start pulse request. Bit `1`: soft reset. |
 | `0x04` | `STATUS` | R/W1C | Bit `0`: busy. Bit `1`: done (cleared by writing `1` to bit `1`). |
-| `0x08` | `M_DIM` | R/W | M dimension, default `4`. |
-| `0x0C` | `N_DIM` | R/W | N dimension, default `4`. |
+| `0x08` | `M_DIM` | R/W | M dimension, default `16`. |
+| `0x0C` | `N_DIM` | R/W | N dimension, default `16`. |
 | `0x10` | `INT_EN` | R/W | Bit `0`: done-interrupt enable. |
 | `0x14` | `INT_STAT` | R/W1C | Bit `0`: done-interrupt pending. |
-| `0x18` | `K_DIM` | R/W | K reduction dimension, default `4`. |
+| `0x18` | `K_DIM` | R/W | K reduction dimension, default `16`. |
 
 ## Behavior
 
