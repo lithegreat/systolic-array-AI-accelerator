@@ -176,7 +176,7 @@ Recommended flow:
 3. Open a merge request from that branch.
 4. Ask at least one other user to approve the MR before merging.
 
-Use the issue and MR linking guide in [docs/GITLAB_ISSUE_LINKING.md](docs/GITLAB_ISSUE_LINKING.md).
+Use the issue and MR linking guide in [docs/guides/gitlab_workflow.md](docs/guides/gitlab_workflow.md).
 
 Recommended branch naming:
 
@@ -381,7 +381,7 @@ call.
 To run a different program, change `TESTCASE`/`TEST` (e.g. `blink` to first sanity-check the
 environment). Add `GUI=-gui` to `make run_sim` for the QuestaSim GUI.
 
-See [docs/edu4chip_examples.md](docs/edu4chip_examples.md) for the full Edu4Chip example
+See [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md) for the full Edu4Chip example
 instructions (QuestaSim, FPGA prototyping, OpenOCD, and the QuestaSim licensing note).
 
 ### FPGA flow (PYNQ-Z1)
@@ -427,7 +427,7 @@ make load_elf TEST=accel
 > fit on the PYNQ-Z1**: post-synthesis utilization is 54822/53200 LUTs (103%) and 220/220
 > DSPs (100%), so the placer overflows and no bitstream is produced. Reduce the array size
 > (e.g. 8x8) or target a larger device to generate a bitstream. See
-> [docs/edu4chip_examples.md](docs/edu4chip_examples.md) for the full report.
+> [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md) for the full report.
 >
 > The physical array size is selectable at synthesis via `ACCEL_DIM` (default 16):
 > `make all_xilinx ACCEL_DIM=8` builds an **8x8 bitstream that fits the PYNQ-Z1** (verified:
