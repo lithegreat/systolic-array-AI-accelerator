@@ -1,39 +1,241 @@
 # AI Accelerator for Didactic SoC
 
-This project implements a systolic-array based AI accelerator for the [Edu4Chip didactic SoC](https://github.com/Edu4Chip/Didactic-SoC) and includes RTL sources, Python golden models, cocotb testbenches, and Verilator-based simulation.
+A systolic-array (GEMM) AI accelerator for the
+[Edu4Chip Didactic SoC](https://github.com/Edu4Chip/Didactic-SoC), with RTL
+sources, Python/C golden models, cocotb + Verilator simulation, and full-SoC
+(Ibex CPU in-loop) integration on the TUM lab server.
 
-If you want the interface reference, see [docs/interface/README.md](docs/interface/README.md).
+**New here?** Skim [Prerequisites](#prerequisites) → [Setup](#setup) →
+[Run the tests locally](#run-the-tests-locally). That gets you to a green
+`PASS` in a few minutes without any SoC, FPGA, or license.
+
+For deeper material, `docs/` is the system of record — start at
+[docs/README.md](docs/README.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Module pin/protocol contracts live in [docs/interface/](docs/interface/README.md).
 
 ## Table of contents
-- [Architecture Overview](#architecture-overview)
-- [What lives where](#what-lives-where)
-- [Development and Verification Flow](#development-and-verification-flow)
-- [Before you start](#before-you-start)
-- [Quick start](#quick-start)
-  - [Clone the repository](#clone-the-repository)
-  - [Create the Python environment](#create-the-python-environment)
-- [Run locally](#run-locally)
-- [GitLab workflow](#gitlab-workflow)
-- [Running simulations and viewing coverage](#running-simulations-and-viewing-coverage)
-  - [Functional RTL coverage](#functional-rtl-coverage)
-  - [Current coverage baseline](#current-coverage-baseline)
-- [Standalone accelerator simulation](#standalone-accelerator-simulation)
-- [Full-SoC integration (Didactic SoC)](#full-soc-integration-didactic-soc)
-  - [Lab-server prerequisites (one-time)](#lab-server-prerequisites-one-time)
-  - [Simulation flow (QuestaSim, CPU in-loop)](#simulation-flow-questasim-cpu-in-loop)
+
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Run the tests locally](#run-the-tests-locally)
+  - [1. Standalone accelerator sim (fastest)](#1-standalone-accelerator-sim-fastest)
+  - [2. cocotb regression + coverage](#2-cocotb-regression--coverage)
+  - [3. Full-SoC functional sim (CPU in-loop, Verilator)](#3-full-soc-functional-sim-cpu-in-loop-verilator)
+- [Run on the lab server](#run-on-the-lab-server)
+  - [One-time lab setup](#one-time-lab-setup)
+  - [QuestaSim flow (CPU in-loop)](#questasim-flow-cpu-in-loop)
   - [FPGA flow (PYNQ-Z1)](#fpga-flow-pynq-z1)
+- [Project layout](#project-layout)
+- [Architecture at a glance](#architecture-at-a-glance)
+- [Contributing (GitLab workflow)](#contributing-gitlab-workflow)
 - [CI and pre-commit](#ci-and-pre-commit)
 - [Troubleshooting](#troubleshooting)
 
-## Architecture Overview
-The ML accelerator architecture is divided into the following loosely-coupled functional blocks:
-- **Control Logic**: Orchestrates data movement and computation (in `rtl/control/`).
-- **MAC Unit**: The core Multiply-Accumulate processing element (in `rtl/MAC/`).
-- **Systolic Array**: Grid of MAC units for matrix multiplication (in `rtl/array/`).
-- **Matrix A & B**: Input distribution structures (in `rtl/matrix/`).
-- **Matrix C**: Output accumulation and readback logic (in `rtl/matrix/`).
+## Prerequisites
 
-The integration target is the Edu4Chip SoC platform. Both ASIC (GF 22 nm FDX) and FPGA prototyping targets are maintained.
+Develop on **Linux** (on Windows, use WSL2). Only the first three rows are
+needed for local simulation; the rest are for the full-SoC, lab-server, and
+FPGA flows.
+
+| Tool | Version | Needed for |
+| --- | --- | --- |
+| Python | 3.9 – 3.13 (**not 3.14** — cocotb doesn't support it yet) | tooling, cocotb, golden models |
+| Verilator | **5.x** (built with `--timing`) | local RTL simulation |
+| Git | any recent | clone + submodule |
+| RISC-V GCC | baremetal `rv32imc/ilp32` (`riscv-none-elf-*` or `riscv64-unknown-elf-*`) | building Ibex firmware for full-SoC / FPGA |
+| bender | 0.31.0 | fetching SoC RTL dependencies |
+| QuestaSim | 2023.4 (lab server) | CPU-in-loop SoC sim (needs a Mentor license) |
+| Vivado | 2024.1 (lab server) | FPGA bitstream (PYNQ-Z1) |
+
+Install Verilator from your package manager:
+
+```bash
+sudo apt install verilator     # Debian/Ubuntu
+sudo dnf install verilator     # Fedora
+```
+
+If your distro ships Verilator 4.x, build 5.x from source — the testbenches use
+`--timing`, which 4.x lacks.
+
+## Setup
+
+```bash
+# 1. Clone
+git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
+cd group5
+
+# 2. Python environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt        # pulls in requirements/check.txt + sim.txt
+
+# 3. (Recommended) install the pre-commit hooks
+pre-commit install
+```
+
+That is everything you need for local simulation. The **full-SoC** and
+**lab-server** flows additionally need the SoC submodule and `bender` — see
+[One-time lab setup](#one-time-lab-setup).
+
+## Run the tests locally
+
+Three tiers, from fastest to most complete. Start with tier 1.
+
+### 1. Standalone accelerator sim (fastest)
+
+Self-contained SystemVerilog APB testbench
+([sim/testbenches/accel/tb_accel.sv](sim/testbenches/accel/tb_accel.sv)) — no
+SoC, no Ibex, no RISC-V program. Builds `accelerator_top` and prints `PASS`/`FAIL`.
+
+```bash
+source .venv/bin/activate
+./sim/scripts/run_verilator.sh             # 16x16 array (default)
+./sim/scripts/run_verilator.sh --dim 8     # 8x8 array (matches the PYNQ-Z1 bitstream)
+./sim/scripts/run_verilator.sh --trace     # also dump waves to sim/waves/
+```
+
+Expected: `All 256 C elements == 16, PASS` (or `All 64 C elements == 8, PASS`
+with `--dim 8`).
+
+### 2. cocotb regression + coverage
+
+Every per-module cocotb testbench is driven by one pytest entry point. This is
+the suite CI runs.
+
+```bash
+source .venv/bin/activate
+pytest sim/test_runner.py -v
+```
+
+It runs the per-module testbenches under `sim/testbenches/` (array, control,
+mac, matrix_ab, matrix_c, top) and then a functional-coverage report.
+
+Coverage (Verilator `--coverage`) lands in:
+
+- `sim/coverage_annotated/` — annotated RTL; lines prefixed `%00` never ran.
+- `sim/coverage.info` — lcov format for the
+  [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters)
+  VS Code extension (Command Palette → *Coverage Gutters: Display Coverage*).
+
+Re-run just the report against existing `coverage.dat` files:
+
+```bash
+pytest sim/test_runner.py::test_coverage_report -v -s
+```
+
+Baseline (June 2026): **80 %** line coverage (269 / 334). The remaining gaps are
+tied-zero `PSLVERR` ports and `unique case` FSM defaults that only fire on
+illegal states — both intentional.
+
+### 3. Full-SoC functional sim (CPU in-loop, Verilator)
+
+The Ibex core executes `Didactic-SoC/sw/accel/accel.c`, which drives the
+accelerator over the **real OBI/APB fabric** and self-checks `C = A·B` against a
+golden reference. License-free (open-source Verilator). Needs the submodule and
+its bender dependencies first ([One-time lab setup](#one-time-lab-setup) steps
+1–3, runnable on any Linux box).
+
+```bash
+cd Didactic-SoC
+make verilate_accel
+```
+
+**PASS** = the firmware writes `accel_result == 0xACCE5500`. Test vectors are
+regenerable with `python3 sim/common/c_code/gen_accel_data.py`. Details and the
+QuestaSim bring-up notes are in
+[docs/verification/accelerator_soc_report.md](docs/verification/accelerator_soc_report.md).
+
+## Run on the lab server
+
+The CPU-in-loop QuestaSim and FPGA flows run on the TUM lab server
+(`lx01.clients.eikon.tum.de`). The condensed steps are below; the full reference
+(OpenOCD, licensing, board bring-up) is in
+[docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md).
+
+### One-time lab setup
+
+Use the SoC **submodule pinned in this repo** — do not clone upstream
+`Edu4Chip/Didactic-SoC` separately; the submodule already integrates the
+accelerator into `tum_ss`.
+
+```bash
+# 1. Get the submodule (and its nested IPs)
+git submodule update --init --recursive
+
+# 2. Put bender (PULP dependency manager) on PATH
+mkdir -p bin && cd bin
+wget https://github.com/pulp-platform/bender/releases/download/v0.31.0/bender-0.31.0-x86_64-linux-gnu-ubuntu24.04.tar.gz
+tar -xzf bender-0.31.0-*.tar.gz && rm bender-0.31.0-*.tar.gz
+cd .. && export PATH="$PWD/bin:$PATH"
+
+# 3. Fetch SoC RTL dependencies (ibex, obi, common_cells, ...)
+cd Didactic-SoC && make repository_init
+```
+
+### QuestaSim flow (CPU in-loop)
+
+One wrapper script does deps → baremetal build → compile → elaborate → run,
+inside the lab apptainer container (QuestaSim is binary-incompatible with the
+host Ubuntu 24.04):
+
+```bash
+# defaults TESTCASE=accel; defaults the TUM EI license and forwards it into the container
+bash scripts/lab_server_sim.sh accel
+```
+
+PASS prints `accel: PASS` and `JTAG RETURN OK ... status 0x00000000`. Override
+the license with `export LM_LICENSE_FILE=<port@host>` before running. The script
+header documents every step it automates and how it differs from the official
+`Edu4Chip_setup.sh`.
+
+### FPGA flow (PYNQ-Z1)
+
+Build a bitstream with Vivado, then load the program onto Ibex over JTAG
+(FT4232H + OpenOCD).
+
+```bash
+# 1. Build the FPGA software image (riscv32 toolchain)
+module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
+cd Didactic-SoC/fpga/sw && make env && make test TESTCASE=accel   # -> build/fpga/sw/accel.elf
+
+# 2. Synthesize + implement + bitstream (8x8 fits the PYNQ-Z1; default 16 overflows it)
+module load xilinx/vivado/2024.1
+cd Didactic-SoC/fpga && make all_xilinx ACCEL_DIM=8
+```
+
+```bash
+# 3. Program + run: OpenOCD in one terminal, GDB load in another
+openocd -f Didactic-SoC/fpga/utils/openocd-didactic.cfg
+cd Didactic-SoC/fpga && make load_elf TEST=accel    # in GDB: 'c' to run, Ctrl+C to halt
+```
+
+> Synthesis status (Vivado 2024.1 / `xc7z020`): the SoC synthesizes cleanly
+> (0 DRC errors). The **default 16x16 array does not fit** the PYNQ-Z1 (103 %
+> LUTs, 100 % DSPs); the **8x8 build fits** (47 % LUTs, 30 % DSPs) and produces
+> `DidacticZ1.bit`. Board bring-up notes (FT4232H serial, `vid_pid 0x6011`,
+> 25 MHz PLL, `z1.xdc` LED mapping) are in
+> [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md).
+
+## Project layout
+
+| Path | What |
+| --- | --- |
+| `rtl/` | SystemVerilog design (`MAC/`, `array/`, `matrix/`, `control/`, `top/`; shared params in `rtl/include/`). |
+| `sim/testbenches/` | cocotb + Verilator testbenches, per module. |
+| `sim/scripts/` | Standalone sim runners (`run_verilator.sh`, `run_xsim.sh`) + `Makefile.common`. |
+| `sim/common/` | Shared Python helpers and golden/reference models (incl. `c_code/` GEMM model + vector generator). |
+| `sw/` | C drivers/tests for the RISC-V Ibex core. |
+| `fpga/`, `asic/` | FPGA constraints / Vivado project, and GF 22 nm FDX scripts/reports. |
+| `scripts/` | CI convention/doc checkers and the QuestaSim lab-server runner. |
+| `docs/` | **System of record** — index, architecture, interfaces, plans, guides, reference, verification. |
+| `Didactic-SoC/` | Edu4Chip SoC submodule; the accelerator lives in its `tum_ss` slot. |
+
+Full directory conventions: [docs/README.md](docs/README.md).
+
+## Architecture at a glance
+
+GEMM accelerator (`C = A·B`, output-stationary, default `M=N=K=16`, 16-bit
+signed, 32-bit accumulate). The RISC-V core configures and feeds it over APB:
 
 ```mermaid
 flowchart TB
@@ -106,361 +308,53 @@ flowchart TB
    style C fill:#fff9c4,stroke:#f9a825
 ```
 
-## What lives where
-- `rtl/` contains the SystemVerilog design components (`MAC/`, `array/`, `matrix/`, `control/`, `top/`).
-- `sim/testbenches/` contains the cocotb and Verilator test scripts categorized per module.
-- `sim/scripts/` contains the standalone simulation runners (`run_verilator.sh`, `run_xsim.sh`) and the shared `Makefile.common`.
-- `sim/common/` contains shared Python helpers and golden models.
-- `docs/` contains documentation on the Didactic SoC, GitLab coordination, and interfaces.
-- `fpga/` contains FPGA constraints and the Vivado project setup.
-- `asic/` contains reports and scripts targeting the GF 22 nm FDX technology node.
-- `sw/` contains C-based software drivers and tests for the RISC-V Ibex core interactions.
-- `bin/` holds local tool binaries (e.g. `bender`); it is gitignored and not committed.
-- `Didactic-SoC/` is the Edu4Chip SoC included as a git submodule; the accelerator is integrated into its `tum_ss` subsystem slot.
+The full domain/layer map, ownership, and a maturity scorecard are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Development and Verification Flow
-Functionality changes require the following pipeline to be considered complete:
-1. **RTL Design**: Implement the SystemVerilog design under `rtl/`. Sub-modules must adhere to the interface contracts defined in `docs/interface/`.
-2. **Python Golden Model**: Author a software reference model matching the expected behavioral outputs under `sim/testbenches/` or `sim/common/`.
-3. **Cocotb Testbench**: Develop Python-based testbenches utilizing cocotb to check DUT outputs against the golden model.
-4. **Verilator Simulation**: Confirm that tests pass properly through Verilator in a Linux environment.
-5. **CI Automation**: Assure every merge request natively passes in the automated CI jobs.
+## Contributing (GitLab workflow)
 
-## Before you start
-- Use Linux for development. If you are on Windows, use WSL or another Linux environment.
-- Use Python 3.13 or an older supported Python 3 release. Python 3.14 is not supported yet because cocotb does not support it at the moment.
-- Install Git, Python, and Verilator before running the simulations.
+Do not push to `main`. Work issue-by-issue on a branch and open a merge request:
 
-## Quick start
-1. Clone the repository.
-2. Create and activate a Python virtual environment.
-3. Install the Python requirements.
-4. Run the checks or the test suite.
+1. Create or pick a GitLab issue.
+2. Branch with an issue-linked name: `git checkout -b 2-mac-unit-pipeline-fix`.
+3. Open an MR; link the issue in the description (`Closes #2`).
+4. Get at least one approval before merging.
 
-### Clone the repository
-
-```bash
-git clone https://gitlab.lrz.de/ai-pro-msmcd-labs/2025/os/group5.git
-cd group5
-```
-
-### Create the Python environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-If `python3` is not found, install Python from your Linux distribution first.
-
-## Run locally
-If Verilator is missing, install it with your package manager. On Debian or Ubuntu, for example:
-
-```bash
-sudo apt install verilator
-```
-
-On Fedora:
-
-```bash
-sudo dnf install verilator
-```
-
-## GitLab workflow
-This project should not be pushed directly to the `main` branch. Create a branch for your work and open a merge request.
-
-Recommended flow:
-1. Create or pick a GitLab issue first.
-2. Create a branch for that issue.
-3. Open a merge request from that branch.
-4. Ask at least one other user to approve the MR before merging.
-
-Use the issue and MR linking guide in [docs/guides/gitlab_workflow.md](docs/guides/gitlab_workflow.md).
-
-Recommended branch naming:
-
-```bash
-git checkout -b 2-mac-unit-pipeline-fix
-```
-
-This makes it easier for GitLab to link the branch to the related issue.
-
-In the MR description, link the issue explicitly. A common pattern is:
-
-```markdown
-Closes #2
-```
-
-It is better to create the issue before the MR so the branch, discussion, and review all stay connected to one work item.
-
-## Running simulations and viewing coverage
-
-All cocotb testbenches are driven by a single pytest entry point:
-
-```bash
-source .venv/bin/activate
-pytest sim/test_runner.py -v
-```
-
-This runs every per-module Makefile under `sim/testbenches/` (array, control, mac, matrix\_ab, matrix\_c, top) and then produces a functional coverage report.
-
-### Functional RTL coverage
-
-Verilator is invoked with `--coverage` (configured in `sim/scripts/Makefile.common`).
-After all testbenches complete, `test_coverage_report` in `sim/test_runner.py` runs
-`verilator_coverage` to:
-
-- Print a summary line (`Total coverage (N/334)`) to the terminal.
-- Write annotated RTL sources to `sim/coverage_annotated/` — lines prefixed with
-  `%00` were never executed.
-- Write `sim/coverage.info` in lcov format for the
-  [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters)
-  VS Code extension.
-
-To view coverage highlights in the editor:
-1. Open any RTL file (e.g. `rtl/top/accelerator_top.sv`).
-2. Open the Command Palette (`Ctrl+Shift+P`) → **Coverage Gutters: Display Coverage**.
-
-Green gutter marks indicate executed lines; red marks indicate unexecuted lines.
-
-Run only the coverage report (against existing `coverage.dat` files) without re-running simulations:
-
-```bash
-pytest sim/test_runner.py::test_coverage_report -v -s
-```
-
-### Current coverage baseline
-
-As of June 2026 the aggregate line coverage across all RTL modules is **80 %** (269 / 334 lines).
-
-| Module | Uncovered lines | Notes |
-|---|---|---|
-| `accelerator_top.sv` | 1 | `PSLVERR` (tied-zero, never asserted) |
-| `control_unit.sv` | 2 | `unique case` FSM default branch (unreachable by design) |
-| `matrix_buffer_ab.sv` | 2 | `unique case` FSM default + `PSLVERR` |
-| `matrix_buffer_c.sv` | 1 | `PSLVERR` (tied-zero) |
-| `systolic_array.sv` | 1 | `unique case` FSM default (unreachable by design) |
-
-Remaining gaps are either ports tied to constant zero (`PSLVERR`) or `unique case` default
-branches that require an illegal FSM state to fire. Both are intentional design constraints.
-
-## Standalone accelerator simulation
-Besides the cocotb suite, the accelerator can be exercised end-to-end through its APB
-interface with a self-contained SystemVerilog testbench
-([sim/testbenches/accel/tb_accel.sv](sim/testbenches/accel/tb_accel.sv)). This needs no SoC,
-no Ibex core, and no RISC-V program.
-
-```bash
-# Verilator 5.x (with --timing). Builds accelerator_top + tb_accel and prints PASS/FAIL.
-./sim/scripts/run_verilator.sh
-
-# Select the systolic-array size (M=N=K); default is 16x16.
-./sim/scripts/run_verilator.sh --dim 8     # test the 8x8 array (matches the PYNQ-Z1 bitstream)
-
-# Optionally dump waves to sim/waves/
-./sim/scripts/run_verilator.sh --trace
-./sim/scripts/run_verilator.sh --dim 8 --trace
-```
-
-Both sizes are verified: `--dim 8` -> `All 64 C elements == 8, PASS`; default 16x16 ->
-`All 256 C elements == 16, PASS`. The `--dim` value sets the `ACCEL_DIM` Verilog define,
-matching the `make all_xilinx ACCEL_DIM=<N>` bitstream option.
-
-A Vivado/xsim runner is also provided for environments that have the Xilinx tools:
-
-```bash
-./sim/scripts/run_xsim.sh
-```
-
-## Full-SoC integration (Didactic SoC)
-The accelerator is integrated into the Edu4Chip SoC (included as the `Didactic-SoC`
-git submodule) in the `tum_ss` subsystem slot. The full SoC — Ibex core, all subsystems,
-and the accelerator — builds and elaborates under the SoC's official Verilator flow:
-
-```bash
-cd Didactic-SoC
-make verilate
-```
-
-This compiles the entire SoC (including the accelerator RTL) and runs the C++ testbench,
-dumping waves to `Didactic-SoC/logs/vlt_dump.vcd`. It confirms the accelerator elaborates
-and links inside the SoC, but it cannot run the Ibex CPU in-loop (see the boot-ROM note
-below). For day-to-day functional verification of the accelerator, prefer the standalone
-testbench in the previous section.
-
-A baremetal self-checking GEMM test for the accelerator lives at
-`Didactic-SoC/sw/accel/accel.c`. Building it requires a baremetal RISC-V toolchain
-(`riscv-none-elf-gcc`, rv32imc/ilp32):
-
-```bash
-cd Didactic-SoC/sw
-make PREFIX=riscv-none-elf TESTCASE=accel TEST=accel test   # -> ../build/sw/accel.hex
-```
-
-> Note: the Didactic SoC has no autonomous boot ROM — the Ibex boot address points into the
-> control-register region, and the reference SystemVerilog testbench boots the core over JTAG
-> (which Verilator cannot run because it uses SystemVerilog classes). Running `accel.c` on the
-> CPU in-loop is therefore done with QuestaSim on the lab server (simulation flow below) or on
-> the PYNQ-Z1 FPGA (FPGA flow below); the standalone testbench above fully verifies accelerator
-> function locally.
-
-### Lab-server prerequisites (one-time)
-These flows run on the TUM lab server with the Didactic SoC included here as a submodule —
-do **not** clone the upstream `Edu4Chip/Didactic-SoC` separately; the submodule is already
-pinned to the fork that integrates the accelerator into `tum_ss`.
-
-```bash
-# 1. Get the submodule (and its nested IPs)
-git submodule update --init --recursive
-
-# 2. Provide bender (PULP dependency manager) on PATH
-mkdir -p bin && cd bin
-wget https://github.com/pulp-platform/bender/releases/download/v0.31.0/bender-0.31.0-x86_64-linux-gnu-ubuntu24.04.tar.gz
-tar -xzf bender-0.31.0-*.tar.gz && rm bender-0.31.0-*.tar.gz
-cd .. && export PATH="$PWD/bin:$PATH"
-
-# 3. Fetch SoC RTL dependencies (ibex, obi, common_cells, ...)
-cd Didactic-SoC && make repository_init
-```
-
-### Simulation flow (QuestaSim, CPU in-loop)
-QuestaSim must run inside the lab apptainer container (binary incompatibility with Ubuntu
-24.04). The container image is `/nas/ei/share/tools/apptainer/MSMCD/alma.sif`.
-
-**Quick path** — once the submodule and `bin/bender` are in place, the whole flow (deps,
-baremetal build, compile, elaborate) runs with one command on the lab server:
-
-```bash
-bash scripts/lab_server_sim.sh accel        # default TESTCASE=accel
-# with a license, run_sim is included too:
-export MGLS_LICENSE_FILE=<port@host>
-bash scripts/lab_server_sim.sh accel
-```
-
-The manual steps the script automates are documented below.
-
-The lab uses *environment modules*, which a non-login shell does not auto-initialise. Source
-the init script first, then load the toolchain and QuestaSim modules:
-
-```bash
-source /nas/ei/share/tools/environment_modules/4.5.1/init/bash
-module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05   # riscv64 gcc (baremetal)
-module load mentor/questasim/2023.4                                 # vlog/vopt/vsim on PATH
-```
-
-Build the accelerator baremetal program. `XLEN=64` selects the lab's 64-bit multilib
-toolchain; the code is still compiled as `rv32imc/ilp32`:
-
-```bash
-cd Didactic-SoC
-make build_test XLEN=64 TESTCASE=accel TEST=accel      # -> build/sw/accel.hex
-```
-
-Compile, elaborate and run inside the container. Run `vlog/vopt/vsim` non-interactively with
-`apptainer exec` (no GUI needed). The `/nfs` bind is required — QuestaSim lives under
-`/nfs/tools/...`, so without it `vlib`/`vsim` are not found:
-
-```bash
-SIF=/nas/ei/share/tools/apptainer/MSMCD/alma.sif
-apptainer exec --env PATH="$PATH" \
-    --bind /nas:/nas --bind /nfs:/nfs --bind /data:/data --bind /tmp:/tmp --bind "$HOME:$HOME" \
-    "$SIF" bash -c '
-        cd Didactic-SoC/sim
-        make compile
-        make elaborate TESTCASE=accel
-        make run_sim    TESTCASE=accel'   # Ibex boots accel.hex over JTAG
-```
-
-`vlog`/`vopt` (compile + elaborate) need no license and confirm the accelerator integrates and
-elaborates cleanly inside the full SoC. `vsim` (`run_sim`) does need a Mentor/Siemens license:
-export the lab's license server before entering the container and pass it through, e.g.
-`export MGLS_LICENSE_FILE=<port@host>` and add `--env MGLS_LICENSE_FILE` to the `apptainer exec`
-call.
-
-To run a different program, change `TESTCASE`/`TEST` (e.g. `blink` to first sanity-check the
-environment). Add `GUI=-gui` to `make run_sim` for the QuestaSim GUI.
-
-See [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md) for the full Edu4Chip example
-instructions (QuestaSim, FPGA prototyping, OpenOCD, and the QuestaSim licensing note).
-
-### FPGA flow (PYNQ-Z1)
-Builds the bitstream with Vivado, then loads the accelerator program onto the Ibex core over
-JTAG (FT4232H + OpenOCD).
-
-```bash
-# 1. Build the FPGA software image (separate fpga/sw flow, riscv32 toolchain)
-module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
-cd Didactic-SoC/fpga/sw
-make env
-make test TESTCASE=accel                                # -> build/fpga/sw/accel.elf
-
-# 2. Synthesize, implement and generate the bitstream (z1 = PYNQ-Z1)
-module load xilinx/vivado/2024.1
-cd Didactic-SoC/fpga
-make all_xilinx ACCEL_DIM=8                             # 8x8 fits the PYNQ-Z1; default 16 overflows it
-#   (omit ACCEL_DIM for the default 16x16; use 'make all_xilinx_gui' for the GUI)
-```
-
-Then program the board and run the core:
-
-```bash
-# Open the generated project and write the bitstream to the FPGA
-#   build/fpga/z1/didactic-z1.xpr
-# Wire the JTAG IO pins to the FT4232H module, then in a new terminal:
-openocd -f Didactic-SoC/fpga/utils/openocd-didactic.cfg
-
-# In another terminal, load and run the ELF on Ibex via GDB:
-cd Didactic-SoC/fpga
-make load_elf TEST=accel
-#   in the GDB session: type 'c' + Enter to run, Ctrl+C to halt, 'quit' to exit
-```
-
-> Board bring-up notes (from the lab setup): the OpenOCD config needs the FT4232H serial
-> number and `vid_pid 0x6011`; the PYNQ-Z1 PLL is configured for 25 MHz (UART examples must
-> match); and `fpga/constraints/z1.xdc` maps two GPIOs to the board LEDs. These only matter
-> for the FPGA flow, not for simulation.
-
-> Synthesis status (verified on the lab server, Vivado 2024.1 / `xc7z020`): the integrated
-> SoC **synthesizes cleanly** — `synth_design` + `opt_design` complete with **0 DRC errors**
-> and the accelerator RTL is in the netlist. However the **default 16x16 accelerator does not
-> fit on the PYNQ-Z1**: post-synthesis utilization is 54822/53200 LUTs (103%) and 220/220
-> DSPs (100%), so the placer overflows and no bitstream is produced. Reduce the array size
-> (e.g. 8x8) or target a larger device to generate a bitstream. See
-> [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md) for the full report.
->
-> The physical array size is selectable at synthesis via `ACCEL_DIM` (default 16):
-> `make all_xilinx ACCEL_DIM=8` builds an **8x8 bitstream that fits the PYNQ-Z1** (verified:
-> 47% LUTs, 30% DSPs, place + route + `write_bitstream` all pass, producing `DidacticZ1.bit`).
+**Interface-first**: if you touch an RTL boundary (names, widths, reset,
+handshake), update the matching `docs/interface/<module>_if.md` *first*. Track
+complex, multi-step work as a plan in [docs/plans/](docs/plans/README.md). Full
+workflow + CI-failure triage: [docs/guides/gitlab_workflow.md](docs/guides/gitlab_workflow.md).
 
 ## CI and pre-commit
-This repository uses GitLab CI to check the code automatically. The CI pipeline currently runs:
-- convention checks (`scripts/check_conventions.py`)
-- `ruff format --check .`
-- `.gitkeep` validation
-- cocotb simulation through Verilator
-- the standalone accelerator Verilator testbench (`sim/scripts/run_verilator.sh`)
 
-Pre-commit hooks are also configured for local use. They run:
-- `ruff format`
-- `python scripts/check_conventions.py`
-- `python scripts/check_gitkeep.py`
+GitLab CI (`.gitlab-ci.yml`) runs two stages:
 
-Install and enable pre-commit if you want the same checks before every commit:
+- **check**: `scripts/check_conventions.py`, `ruff format --check .`,
+  `scripts/check_gitkeep.py`, `scripts/check_docs.py` (docs structure /
+  cross-links / freshness).
+- **sim**: cocotb suite, the standalone accelerator Verilator test, and the
+  full-SoC accelerator sim (guarded to RTL/SoC changes).
+
+Run the same locally before pushing:
 
 ```bash
-pip install pre-commit
-pre-commit install
-```
-
-Run it manually when needed:
-
-```bash
-pre-commit run --all-files
+source .venv/bin/activate
+pre-commit run --all-files          # ruff + conventions + gitkeep + docs
+pytest sim/test_runner.py -v        # cocotb suite
+./sim/scripts/run_verilator.sh      # standalone accelerator sim
 ```
 
 ## Troubleshooting
-- If `python3` or `pip` is missing, install Python from your Linux distribution.
-- If the virtual environment does not activate, check that you are using a Linux shell.
-- If Verilator is missing, install it before running the simulation tests.
-- If a check fails, read the first error message first; it usually points to the real problem.
+
+- **`python3` / `pip` missing** — install Python from your distro; re-create the
+  venv (`python3 -m venv .venv`).
+- **`verilator: not found` or 4.x** — install/build Verilator 5.x; the
+  testbenches need `--timing`.
+- **cocotb import/collection errors on Python 3.14** — use Python 3.9–3.13.
+- **Full-SoC sim can't find SoC deps** — run
+  [One-time lab setup](#one-time-lab-setup) steps 1–3 (`submodule update`,
+  `bender`, `make repository_init`).
+- **`vlib`/`vsim` not found in the container** — bind `/nfs` (QuestaSim lives
+  under `/nfs/tools/...`); `scripts/lab_server_sim.sh` already does this.
+- **A check fails** — read the first error line; it usually names the file and
+  the fix.
