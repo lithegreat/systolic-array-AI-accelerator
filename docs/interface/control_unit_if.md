@@ -11,9 +11,9 @@
 ## Overview
 
 `control_unit` exposes the accelerator's register file over a 32-bit APB
-subordinate port and drives the FSM that runs one output-stationary tile. In v1 the
-matrix buffers stream autonomously, so the legacy matrix-address ports are kept for
-interface compatibility only and are tied low in RTL.
+subordinate port and drives the FSM that runs one output-stationary tile. The
+matrix buffers stream autonomously, so the control unit only issues start/clear
+pulses and tracks completion — it never addresses matrix memory directly.
 
 ## Block diagram
 
@@ -45,13 +45,6 @@ flowchart LR
       done_in(["array_done"])
    end
 
-   subgraph LEGACY["Legacy Compat Ports (tied 0)"]
-      direction TB
-      la(["matrix_a_addr/ren"])
-      lb(["matrix_b_addr/ren"])
-      lc(["matrix_c_addr/wen"])
-   end
-
    clk_s --> CU
    rst_s --> CU
    apb_s -- "write/read" --> regfile
@@ -66,14 +59,9 @@ flowchart LR
    fsm -- "cfg_m/n/k\nsoft_reset" --> ACCEL
    irqlogic -- "irq_4" --> irq_s
 
-   fsm -. "tied 0" .-> la
-   fsm -. "tied 0" .-> lb
-   fsm -. "tied 0" .-> lc
-
    style CU fill:#e1f5ff,stroke:#0288d1
    style SOC fill:#f5f5f5,stroke:#999
    style ACCEL fill:#c8e6c9,stroke:#388e3c
-   style LEGACY fill:#fce4ec,stroke:#c62828
 ```
 
 ```mermaid
@@ -123,17 +111,6 @@ stateDiagram-v2
 | `cfg_n_dim` | Output | `APB_DW` | Exposed N-dimension register value. |
 | `cfg_k_dim` | Output | `APB_DW` | Exposed K-dimension register value. |
 | `soft_reset` | Output | `1` | Current software soft-reset bit state. |
-
-### Legacy compatibility (tied to `0` in v1)
-
-| Port | Direction | Width | Description |
-| --- | --- | --- | --- |
-| `matrix_a_addr` | Output | `MATRIX_AW` | Legacy Matrix A address port. |
-| `matrix_a_ren` | Output | `1` | Legacy Matrix A read enable. |
-| `matrix_b_addr` | Output | `MATRIX_AW` | Legacy Matrix B address port. |
-| `matrix_b_ren` | Output | `1` | Legacy Matrix B read enable. |
-| `matrix_c_addr` | Output | `MATRIX_AW` | Legacy Matrix C address port. |
-| `matrix_c_wen` | Output | `1` | Legacy Matrix C write enable. |
 
 ## Register map
 

@@ -145,7 +145,6 @@ Quick read:
 | `soft_reset_unused` | `control_unit` | unused in top | Exported soft reset (unused). |
 | `mat_done` | `matrix_buffer_ab` | unused in top | Done pulse from the A/B buffer (unused). |
 | `cap_full` | `matrix_buffer_c` | unused in top | Capture-full flag (unused). |
-| `ma_addr`, `mb_addr`, `mc_addr`, `ma_ren`, `mb_ren`, `mc_wen` | `control_unit` | unused in top | Legacy matrix-memory signals (unused). |
 
 ## Behavior
 
