@@ -94,7 +94,7 @@ flowchart TB
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `DATA_W` | `16` | Bit-width for Matrix A/B data elements. |
+| `DATA_W` | `8` | Bit-width for Matrix A/B data elements (INT8 baseline; configurable to `8`/`16`/`32`). |
 | `ACC_W` | `32` | Bit-width for Matrix C accumulation results. |
 | `M` | `16` | Rows in the array and buffers. |
 | `N` | `16` | Columns in the array and buffers. |

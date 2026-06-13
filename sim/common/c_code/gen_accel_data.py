@@ -24,12 +24,13 @@ from pathlib import Path
 
 import numpy as np
 
-# Accelerator build parameters (must match accelerator_top: M=N=K=16, DATA_W=16,
-# ACC_W=32).
+# Accelerator build parameters (must match accelerator_top: M=N=K=16, DATA_W=8,
+# ACC_W=32). DATA_W is the INT8 baseline; regenerate this header if the hardware
+# is rebuilt at a different DATA_W (e.g. +define+ACCEL_DATA_W=16).
 ACC_M = 16
 ACC_N = 16
 ACC_K = 16
-ACC_DATA_W = 16
+ACC_DATA_W = 8
 ACC_ACC_W = 32
 
 DEFAULT_SEED = 0xACCE
@@ -86,6 +87,10 @@ def main() -> int:
     b_flat = b.reshape(-1)  # row-major B[k*N + j]
     c_flat = c.reshape(-1)  # row-major C[i*N + j]
 
+    # A/B element C type tracks the input width (8 -> int8_t, 16 -> int16_t,
+    # 32 -> int32_t). The golden accumulator stays int32_t (ACC_W = 32).
+    elem_ctype = {8: "int8_t", 16: "int16_t", 32: "int32_t"}[ACC_DATA_W]
+
     header = f"""\
 #ifndef __ACCEL_GEMM_DATA_H__
 #define __ACCEL_GEMM_DATA_H__
@@ -113,11 +118,11 @@ def main() -> int:
 #define ACC_K {ACC_K}
 #define ACC_DATA_W {ACC_DATA_W}
 
-static const int16_t accel_A[ACC_M * ACC_K] = {{
+static const {elem_ctype} accel_A[ACC_M * ACC_K] = {{
 {fmt_rows(a_flat, ACC_K)}
 }};
 
-static const int16_t accel_B[ACC_K * ACC_N] = {{
+static const {elem_ctype} accel_B[ACC_K * ACC_N] = {{
 {fmt_rows(b_flat, ACC_N)}
 }};
 

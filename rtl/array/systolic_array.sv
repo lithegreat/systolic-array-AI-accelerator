@@ -21,7 +21,7 @@
 //   * `done` pulses for one cycle after the last C row is accepted.
 // -----------------------------------------------------------------------------
 module systolic_array #(
-    parameter int unsigned DATA_W = 16,
+    parameter int unsigned DATA_W = 8,
     parameter int unsigned ACC_W  = 32,
     parameter int unsigned M      = 16,
     parameter int unsigned N      = 16,

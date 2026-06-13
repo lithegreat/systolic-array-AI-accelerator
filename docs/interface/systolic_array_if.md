@@ -71,7 +71,7 @@ flowchart LR
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `DATA_W` | `16` | Signed data/weight bit-width. |
+| `DATA_W` | `8` | Signed data/weight bit-width (INT8 baseline; configurable to `8`/`16`/`32`). |
 | `ACC_W` | `32` | Accumulator / output width. |
 | `M` | `16` | Output rows (A rows). |
 | `N` | `16` | Output columns (B columns). |
