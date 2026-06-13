@@ -113,19 +113,26 @@ server with the accelerator integrated into the SoC. Results:
   successfully, DRC reports **0 errors**. The accelerator RTL is included in the
   netlist (`accel_pkg`, `control_unit`, `systolic_array`, `accelerator_top`).
 - **The default 16x16 accelerator does not fit on the PYNQ-Z1**: the placer
-  fails with a capacity overflow, so no bitstream is produced. Post-synthesis
-  utilization:
+  fails with a capacity overflow, so no bitstream is produced. Synthesis itself
+  completes cleanly (0 errors); placement fails (`[Place 30-487]`: 7310 slices
+  required vs 5618 available of 13300). Post-synthesis utilization (INT8
+  baseline, `DEF_DATA_W = 8`):
 
   | Resource        | Used  | Available | Util%   |
   | --------------- | ----- | --------- | ------- |
-  | Slice LUTs      | 54822 | 53200     | 103.05% |
-  | DSP48E1         | 220   | 220       | 100.00% |
-  | Slice Registers | 35399 | 106400    | 33.27%  |
+  | Slice LUTs      | 58484 | 53200     | 109.93% |
+  | Slice Registers | 33844 | 106400    |  31.81% |
+  | DSP48E1         |     1 | 220       |   0.45% |
+  | Block RAM       |     0 | 140       |   0.00% |
 
   The 16x16x16 systolic array (256 MAC PEs, `DEF_M/N/K = 16` in
-  `rtl/include/accel_pkg.sv`) saturates all 220 DSPs and pushes total LUT usage
-  past 100%. To generate a bitstream, reduce the array dimensions (e.g. 8x8) or
-  target a larger device.
+  `rtl/include/accel_pkg.sv`) is **LUT-bound** at the INT8 baseline: the 8-bit
+  multiplies map into LUT fabric instead of DSP48 blocks, so the DSPs sit almost
+  entirely unused (1/220) while LUTs exceed 100%. (At the former 16-bit datapath
+  the same array was instead **DSP-bound** — 220/220 DSPs at 100% alongside LUTs
+  ~103%.) To generate a bitstream, reduce the array dimensions (e.g. 8x8), force
+  the multiplies onto the idle DSPs (a `use_dsp` attribute on the MAC product),
+  or target a larger device.
 - **Selecting the array size at synthesis (`ACCEL_DIM`)**: the physical array
   dimension (M=N=K) is set with the `ACCEL_DIM` make/Verilog define, defaulting
   to 16. Build an 8x8 bitstream that fits the PYNQ-Z1 with:
@@ -135,11 +142,14 @@ server with the accelerator integrated into the SoC. Results:
   make all_xilinx ACCEL_DIM=8
   ```
 
-  Verified result for `ACCEL_DIM=8`: place + route + `write_bitstream` all
-  complete (25159/53200 LUTs = 47%, 65/220 DSPs = 30%), producing
-  `build/fpga/z1/didactic-z1.runs/impl_1/DidacticZ1.bit` (+`.bin`). Runtime
-  matrix dimensions written via the APB regmap must stay <= the chosen
-  `ACCEL_DIM`.
+  Verified result for `ACCEL_DIM=8` (INT8 baseline): synthesis, place + route,
+  and `write_bitstream` all complete, producing
+  `build/fpga/z1/didactic-z1.runs/impl_1/DidacticZ1.bit` (+`.bin`).
+  Post-implementation utilization ≈ 28.9k/53200 LUTs (54%), 14.9k FFs (14%),
+  1/220 DSPs, 0 BRAM; DRC 0 errors. Timing shows a small `-0.014 ns` violation
+  on the JTAG clock path (`td_o_reg → jtag_tdo`) — a board I/O path independent of
+  the accelerator datapath and the chosen `ACCEL_DIM`/`DATA_W`. Runtime matrix
+  dimensions written via the APB regmap must stay <= the chosen `ACCEL_DIM`.
 
 > Note: `Didactic-SoC/fpga/scripts/run_xilinx.tcl` hardcodes the synthesis
 > include paths (like the sim Makefile). The accelerator's `rtl/include` was
