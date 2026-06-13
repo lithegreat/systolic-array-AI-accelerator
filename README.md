@@ -210,10 +210,12 @@ cd Didactic-SoC/fpga && make load_elf TEST=accel    # in GDB: 'c' to run, Ctrl+C
 ```
 
 > Synthesis status (Vivado 2024.1 / `xc7z020`): the SoC synthesizes cleanly
-> (0 DRC errors). The **default 16x16 array does not fit** the PYNQ-Z1 (103 %
-> LUTs, 100 % DSPs); the **8x8 build fits** (47 % LUTs, 30 % DSPs) and produces
-> `DidacticZ1.bit`. Board bring-up notes (FT4232H serial, `vid_pid 0x6011`,
-> 25 MHz PLL, `z1.xdc` LED mapping) are in
+> (0 DRC errors). At the **INT8 baseline** (`DEF_DATA_W = 8`) the **default 16x16
+> array does not fit** the PYNQ-Z1 — now **LUT-bound** (110 % LUTs, &lt;1 % DSPs:
+> 8-bit multiplies map to LUT fabric, leaving the 220 DSPs idle), whereas the
+> former 16-bit datapath was DSP-bound. The **8x8 build fits** (54 % LUTs, 1 DSP)
+> and produces `DidacticZ1.bit`. Board bring-up notes (FT4232H serial,
+> `vid_pid 0x6011`, 25 MHz PLL, `z1.xdc` LED mapping) are in
 > [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md).
 
 ## Project layout
