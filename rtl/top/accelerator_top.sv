@@ -13,7 +13,7 @@
 module accelerator_top
     import accel_pkg::*;
 #(
-    parameter int unsigned DATA_W = 16,
+    parameter int unsigned DATA_W = 8,
     parameter int unsigned ACC_W  = 32,
     parameter int unsigned M      = 16,
     parameter int unsigned N      = 16,

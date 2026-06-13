@@ -18,12 +18,12 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
-from golden import matmul_ref, pack_words, random_matrix, to_signed, to_unsigned
+from golden import matmul_ref, pack_words, random_matrix, to_signed
 
 M = int(os.environ.get("M", "16"))
 N = int(os.environ.get("N", "16"))
 K = int(os.environ.get("K", "16"))
-DATA_W = int(os.environ.get("DATA_W", "16"))
+DATA_W = int(os.environ.get("DATA_W", "8"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 
 # Address regions
@@ -173,7 +173,10 @@ async def test_top_identity(dut) -> None:
     cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
     await reset_top(dut)
 
-    a = np.arange(1, M * K + 1, dtype=np.int64).reshape(M, K)
+    # Distinct A values constrained to the signed DATA_W range so they survive
+    # element packing unchanged (identity B must return A bit-for-bit). For
+    # DATA_W >= 9 this is the plain 1..M*K ramp; at INT8 it folds into [0,127].
+    a = (np.arange(1, M * K + 1, dtype=np.int64) % (1 << (DATA_W - 1))).reshape(M, K)
     b = np.eye(K, N, dtype=np.int64)
     ref = matmul_ref(a, b, ACC_W)
     got = await run_matmul(dut, a, b)

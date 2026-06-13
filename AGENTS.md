@@ -1,148 +1,101 @@
 # Agent Instructions
 
-Repository-wide instructions for AI coding agents working on this project.
-These rules are tool-neutral and apply to Codex, Gemini, Copilot, and other
-agents.
+This file is a **map, not an encyclopedia**. It is the small, stable entry point
+injected into every agent's context; the durable source of truth lives in
+[`docs/`](docs/README.md) and is reached by **progressive disclosure** — start
+here, then follow the links. Keep this file ~100 lines: when something needs more
+than a couple of lines, put it in `docs/` and link it.
 
-## Project Context
+Applies to all AI agents (Codex, Gemini, Copilot, Claude, …). It is the **only**
+agent-instruction file in this repo (see *How agents load this file* below).
 
-This repository implements a systolic-array based AI accelerator for the
-Edu4Chip Didactic SoC. Prioritize RTL correctness, interface consistency, and
-integration readiness for FPGA first, then ASIC flow.
+## Mission
 
-Important project references:
-- `README.md`: setup, team ownership, and milestones.
-- `docs/interface/`: source of truth for module interfaces.
-- `docs/GITLAB_ISSUE_LINKING.md`: GitLab branch, issue, and MR workflow.
-- `docs/SoC Documentation.md`: Didactic SoC platform notes.
-- `docs/Slides Kick Off.md`: course timeline, deliverables, and expectations.
-- `.gitlab/issue_templates/` and `.gitlab/merge_request_templates/`: issue and
-  MR structure.
+A systolic-array AI accelerator for the Edu4Chip Didactic SoC. Optimize, in
+priority order, for **RTL correctness → interface consistency → integration
+readiness** (FPGA first, then ASIC). Deliver minimal, reviewable, well-scoped
+patches.
 
-## Architecture And Ownership
+## Start here (progressive disclosure)
 
-Treat these RTL areas as independent modules with clear ownership boundaries:
-- `rtl/control/`: control logic and status/control.
-- `rtl/MAC/`: MAC unit.
-- `rtl/array/`: systolic array.
-- `rtl/matrix/`: Matrix A, Matrix B, and Matrix C buffering.
-- `rtl/top/`: top-level integration.
+| Need | Go to |
+| --- | --- |
+| How the system is built, what's mature, where the gaps are | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| The full documentation index (system of record) | [docs/README.md](docs/README.md) |
+| A module's ports / protocol (**source of truth**) | [docs/interface/](docs/interface/README.md) |
+| Plans, decision logs, tech debt | [docs/plans/](docs/plans/README.md) |
+| Build / run / lab procedures | [docs/guides/](docs/guides/) |
+| Setup, milestones, team ownership | [README.md](README.md) |
 
-Keep cross-module coupling minimal. Prefer explicit ports and stable handshake
-signals instead of hidden assumptions. For cross-owner or cross-module edits,
-keep changes small and document the reason in commit or MR text.
+## Operating loop
 
-## Interface-First Rule
+Run every task through this loop; do not skip verification.
 
-`docs/interface/` defines the module interfaces and should be treated as the
-source of truth.
+1. **Orient** — read the relevant interface doc and code first. `docs/interface/`
+   is the source of truth; never guess a protocol.
+2. **Plan** — small change: a short inline checklist. Complex/multi-session work:
+   open an execution plan in [docs/plans/active/](docs/plans/README.md) and keep
+   its progress + decision logs current.
+3. **Implement** — interface-first; keep the change scoped to one concern.
+4. **Verify** — run the narrowest matching gate (below) and fix until green.
+   Never hand back RTL or sim changes you have not run.
+5. **Close** — sync the affected `docs/`, then commit / open an MR with
+   verification evidence.
 
-Before adding or changing RTL interfaces:
-- Update the matching interface document in `docs/interface/`.
-- Align naming, widths, reset behavior, and handshake semantics with the
-  interface document.
-- Do not silently invent missing protocol details. Add a `TODO` and request
-  clarification when details are ambiguous.
+When details are ambiguous, do not invent them: add a `TODO` and ask.
 
-Current interface documents:
-- `docs/interface/control_unit_if.md`
-- `docs/interface/mac_if.md`
-- `docs/interface/matrix_buffer_a_b_if.md`
-- `docs/interface/systolic_array_if.md`
+## Golden rules
 
-## RTL Coding Expectations
+- **Interface-first**: update the matching `docs/interface/<module>_if.md`
+  *before* changing an RTL boundary (naming, widths, reset, handshake).
+- **Docs are the system of record**: if a design fact, protocol, or decision
+  matters, write it in `docs/` — not only in a commit message or chat.
+- **Plans are first-class**: complex work is tracked in `docs/plans/`, committed.
+- **Minimal patches**: don't refactor unrelated modules in the same change; don't
+  discard teammates' in-progress work.
+- **RTL**: synthesizable, deterministic, explicit reset, signed-arithmetic safe,
+  parameters over magic numbers, valid/ready at streaming boundaries.
 
-- Keep RTL synthesizable and deterministic.
-- Use parameters for bus widths, data widths, depths, and dimensions where
-  practical.
-- Avoid unexplained magic numbers.
-- Keep reset behavior explicit and consistent within each module.
-- Separate control-path and datapath logic where it improves readability and
-  verification.
-- Use `rtl/include/` for shared constants and macros.
-- Preserve signed arithmetic semantics in MAC and array datapaths.
-- Prefer valid/ready handshakes for streaming module boundaries.
+## Verification gates
 
-## Development And Verification Flow
+Activate the venv first so the `ruff` pre-commit hook runs:
+`source .venv/bin/activate`. CI (`.gitlab-ci.yml`) runs them all; locally run the
+narrowest gate covering your change.
 
-For functional RTL changes, follow this sequence:
+- **Setup (once)**: `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements/check.txt -r requirements/sim.txt && pre-commit install`
+- **Format / lint**: `ruff format --check .` and `ruff check .`
+- **Repo + docs conventions**: `python3 scripts/check_conventions.py`,
+  `python3 scripts/check_docs.py`, `python3 scripts/check_gitkeep.py`
+- **Standalone accel sim (Verilator)**: `./sim/scripts/run_verilator.sh`
+- **cocotb regression**: `pytest -vv sim/test_runner.py`
+- **Full-SoC functional sim**: `cd Didactic-SoC && make verilate_accel`
+  (PASS = `accel_result == 0xACCE5500`)
+- **Regenerate golden vectors**: `python3 sim/common/c_code/gen_accel_data.py`
+- **Full-SoC QuestaSim** (lab server, Mentor license): `bash scripts/lab_server_sim.sh accel`
 
-1. Update RTL under `rtl/`.
-2. Create or update the Python golden/reference model.
-3. Add or update cocotb testbenches under `sim/testbenches/`.
-4. Run Verilator simulation through scripts under `sim/scripts/`.
-5. Confirm CI expectations before merge.
+## GitLab workflow
 
-Keep simulation scripts in `sim/scripts/` and waveform-related files in
-`sim/waves/` when needed. Keep FPGA constraints/project files under
-`fpga/constraints/` and `fpga/vivado_project/`. Keep ASIC scripts/reports under
-`asic/scripts/` and `asic/reports/`.
+Issue-linked branches (`{issue}-{slug}`) and MRs; use `glab` for automation
+(host `gitlab.lrz.de`). MRs close issues with `Closes #N` and carry verification
+evidence. Full workflow and CI-failure triage:
+[docs/guides/gitlab_workflow.md](docs/guides/gitlab_workflow.md) and the `glab-ci`
+skill at `.agents/skills/glab-ci/SKILL.md`.
 
-## Documentation Sync
+## Guardrails
 
-For behavior changes affecting interfaces, registers, module scope, or team
-coordination:
-- Update `docs/interface/`.
-- Update `README.md` when setup, scope, milestones, or ownership expectations
-  change.
-- Keep documentation concise and factual.
+- Take local, reversible actions (edit, sim, lint) freely.
+- **Confirm before** destructive or shared-infra actions: deleting files/
+  branches, `git push --force`, history rewrites, dropping data. Never bypass
+  safety checks (e.g. `--no-verify`).
+- Keep personal style preferences out of repo files unless the team agrees.
 
-## GitLab Workflow
+## How agents load this file
 
-Use issue-linked branches and MRs.
+`AGENTS.md` is the **only** agent-instruction file here. Do **not** add per-tool
+files (`.github/copilot-instructions.md`, `CLAUDE.md`, `GEMINI.md`) — they
+duplicate this and drift. Update `AGENTS.md` (and `docs/`) instead.
 
-Branch naming:
-- Prefer `{issue_number}-{short-description}`, for example
-  `3-systolic-array-stall-logic`.
-
-MR descriptions:
-- Use `Closes #N`, `Fixes #N`, or `Resolves #N` when the MR completes an issue.
-- Use `Relates to #N`, `Blocks #N`, or `Blocked by #N` when the relationship is
-  non-closing.
-- Include verification evidence for RTL changes.
-
-Use GitLab templates from `.gitlab/` when creating issues and merge requests.
-
-## GitLab CLI
-
-Use `glab` for GitLab issue, MR, CI, and repository automation when available.
-
-Common commands:
-- `glab auth status`
-- `glab repo view`
-- `glab issue list -A -P 100 -O json`
-- `glab issue view <IID>`
-- `glab mr create`
-
-For the LRZ GitLab host, use `gitlab.lrz.de`. If remotes use a different SSH
-hostname than the API host, pass `-R OWNER/REPO` or configure the host in
-`glab`.
-
-For failed pipelines, use the project skill in the vendor-neutral location
-`.agents/skills/glab-ci/SKILL.md`. The workflow is: list branch pipelines with
-`glab ci list`, inspect failed jobs through the GitLab API, fetch logs with
-`glab ci trace`, patch the smallest local fix, push, and verify the newest
-pipeline reaches `success`.
-
-## Agent Behavior
-
-- Make minimal, reviewable patches.
-- Do not refactor unrelated modules in the same change.
-- Do not change source branches when copying selected files from another branch.
-- Preserve user or teammate changes already present in the worktree.
-- Ask before running destructive commands or long-running build flows.
-- When build or test commands are undocumented, inspect the repo first and use
-  the narrowest relevant command.
-- Keep personal coding style preferences out of repository files unless the
-  team agrees.
-
-## Source Guidance Consolidated
-
-This file consolidates agent-facing guidance from:
-- `GEMINI.md`
-- `.github/copilot-instructions.md`
-- `.agents/skills/glab-ci/SKILL.md`
-- `README.md`
-- `docs/GITLAB_ISSUE_LINKING.md`
-- `docs/interface/README.md`
-- GitLab issue and merge request templates under `.gitlab/`
+- **GitHub Copilot / VS Code**: enable `chat.useAgentsMdFile: true` to load this
+  file directly as always-on instructions.
+- **Codex, Gemini, Claude, other AGENTS.md-aware tools**: read automatically from
+  the repo root.

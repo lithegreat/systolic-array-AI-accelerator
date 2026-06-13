@@ -1,20 +1,22 @@
-# MAC (Multiply Accumulate) Interface declarations 
+# MAC Processing Element Interface
 
-### Module name
-`mac_pe`
-### block diagram
+> A single output-stationary multiply-accumulate cell: it multiplies two signed
+> operands, adds the product into a local accumulator, and pulses the operands on
+> to its right and bottom neighbours so the array can stream data through.
 
+- **Module:** `mac_pe`
+- **Source:** [`rtl/MAC/mac_pe.sv`](../../rtl/MAC/mac_pe.sv)
+- **Owner:** Liu (#2)
 
-                         +---------------------------+
-            b_in =======>|                           |=======> b_out
-                         |          mac_pe           |
-            a_in =======>|   (Processing Element)    |=======> a_out
-                         |                           |
-        clear_acc ------>|                           |=======> pe_out
-                         +---------------------------+
-                                ^       ^       ^
-                                |       |       |
-                               clk    rst_n     en
+## Overview
+
+`mac_pe` is the atomic processing element (PE) of the systolic array. On every
+enabled clock edge it computes `a_in × b_in` (signed) and either adds the product
+to its accumulator or re-initialises the accumulator with it. At the same time it
+registers `a_in`/`b_in` into `a_out`/`b_out` to keep the systolic "pulse" moving.
+Each PE owns exactly one `C[i,j]` accumulator.
+
+## Block diagram
 
 ```mermaid
 flowchart LR
@@ -64,35 +66,50 @@ flowchart LR
    style OUTPUTS fill:#f5f5f5,stroke:#999
 ```
 
+## Parameters
 
-### Parameters
-- `DATA_W` (default 16): Bit-width for signed input data and weights.
-- `ACC_W` (default 32): Bit-width for the internal accumulator to prevent overflow ($2 \times DATA\_W$).
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `DATA_W` | `8` | Bit-width of the signed input operands (INT8 baseline; configurable to `8`/`16`/`32`). |
+| `ACC_W` | `32` | Accumulator width (fixed 32). A single `2*DATA_W`-bit product always fits; summing `K` products wraps mod `2^32` in two's-complement (no saturation). |
 
-### Clock/Reset
-- `clk`: System clock.
-- `rst_n`: Active-low synchronous reset.
+## Ports
 
-### Control and Handshake
-- `en`: Clock enable signal. The PE performs multiplication, accumulation, and data shifting only when `en` is high.
-- `clear_acc`: Synchronous clear signal. When asserted, the internal accumulator is reset to zero or initialized with the current product ($A \times B$).
+### Clock & reset
 
-### Data Inputs
-- `a_in[DATA_W-1:0]`: Signed data element from the left neighbor or Matrix A stream.
-- `b_in[DATA_W-1:0]`: Signed data element from the top neighbor or Matrix B stream.
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `clk` | Input | `1` | System clock. |
+| `rst_n` | Input | `1` | Active-low synchronous reset. |
 
-### Data Outputs
-- `a_out[DATA_W-1:0]`: Registered version of `a_in`. It passes the input to the right neighbor on the next `clk` edge.
-- `b_out[DATA_W-1:0]`: Registered version of `b_in`. It passes the input to the bottom neighbor on the next `clk` edge.
-- `pe_out[ACC_W-1:0]`: The current signed 32-bit accumulation result held within this PE.
+### Control
 
-### Logic Notes
-- **Signed Arithmetic**: All calculations (multiplication and addition) must be performed using signed logic.
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `en` | Input | `1` | Clock enable. The PE multiplies, accumulates, and shifts only when high. |
+| `clear_acc` | Input | `1` | Synchronous accumulator clear. When high, the accumulator is initialised with the current product `a_in × b_in` instead of adding to its previous value. |
 
-- **Formula**:
-$$Accumulator = (a\_in \times b\_in) + Accumulator$$
+### Data
 
-- **Pipelining**: `a_out` and `b_out` must be driven by flip-flops to ensure the systolic "pulse" behavior across the array.
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `a_in` | Input | `DATA_W` | Signed operand from the left neighbour / Matrix A stream. |
+| `b_in` | Input | `DATA_W` | Signed operand from the top neighbour / Matrix B stream. |
+| `a_out` | Output | `DATA_W` | Registered `a_in`, forwarded to the right neighbour next cycle. |
+| `b_out` | Output | `DATA_W` | Registered `b_in`, forwarded to the bottom neighbour next cycle. |
+| `pe_out` | Output | `ACC_W` | Current signed accumulation result held in this PE. |
 
-- **Overflow**: The internal accumulator `ACC_W` is sized to 32 bits to ensure no precision is lost during the summation of 16-bit products.
+## Behavior
 
+- **Signed arithmetic.** Both the multiply and the add use signed logic.
+- **Accumulate vs. clear** on an enabled clock edge:
+  - `clear_acc = 1` → `acc ← a_in × b_in`
+  - `clear_acc = 0` → `acc ← acc + a_in × b_in`
+- **Systolic pulse.** `a_out` and `b_out` are flip-flops, so operands advance one PE per cycle.
+- **No precision loss.** With `ACC_W = 32`, summing 16-bit products never overflows.
+
+$$\text{acc} \leftarrow (a\_in \times b\_in) + \text{acc}$$
+
+## Notes
+
+- `pe_out` is a combinational tap of the accumulator register (no extra pipeline stage).

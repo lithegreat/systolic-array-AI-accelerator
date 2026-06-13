@@ -16,7 +16,7 @@ from cocotb.triggers import RisingEdge, Timer
 from golden import to_signed, to_unsigned  # type: ignore  # provided via PYTHONPATH
 from golden_mac import MacPeGolden
 
-DATA_W = int(os.environ.get("DATA_W", "16"))
+DATA_W = int(os.environ.get("DATA_W", "8"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 
 

@@ -45,6 +45,12 @@ check_gitkeep:
   script:
     - python3 scripts/check_gitkeep.py
 
+check_docs:
+  stage: check
+  image: $CHECK_IMAGE
+  script:
+    - python3 scripts/check_docs.py
+
 # ---------------------------------------------------------------------------
 # Sim stage: Verilator + Python sim deps are baked into SIM_IMAGE.
 # ---------------------------------------------------------------------------

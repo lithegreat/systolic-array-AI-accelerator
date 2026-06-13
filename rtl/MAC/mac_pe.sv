@@ -12,7 +12,7 @@
 // Signed arithmetic is used throughout.
 // -----------------------------------------------------------------------------
 module mac_pe #(
-    parameter int unsigned DATA_W = 16,
+    parameter int unsigned DATA_W = 8,
     parameter int unsigned ACC_W  = 32
 ) (
     input  logic                  clk,
