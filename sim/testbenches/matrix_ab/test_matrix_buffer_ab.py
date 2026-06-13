@@ -6,17 +6,16 @@ import os
 import random
 
 import cocotb
-import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 from apb_bfm import ApbMaster
-from golden import pack_words, random_matrix, to_signed, to_unsigned
+from golden import pack_words, random_matrix, to_signed
 
 M = int(os.environ.get("M", "16"))
 N = int(os.environ.get("N", "16"))
 K = int(os.environ.get("K", "16"))
-DATA_W = int(os.environ.get("DATA_W", "16"))
+DATA_W = int(os.environ.get("DATA_W", "8"))
 APB_DW = 32
 EPW = APB_DW // DATA_W
 
@@ -69,8 +68,6 @@ async def test_apb_write_then_stream(dut) -> None:
     dut.mat_start.value = 0
 
     # Collect K beats.
-    a_bus_w = M * DATA_W
-    b_bus_w = N * DATA_W
     captured = []
     cycles = 0
     while len(captured) < K:
