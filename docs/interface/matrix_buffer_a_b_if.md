@@ -80,7 +80,7 @@ flowchart TB
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `DATA_W` | `16` | Element bit-width. The unpacking logic supports any width that divides 32 evenly; verification uses `16`. |
+| `DATA_W` | `8` | Element bit-width (INT8 baseline). The unpacking logic supports any width that divides 32 evenly (`8`/`16`/`32`). |
 | `M` | `16` | Output rows / A rows. |
 | `N` | `16` | Output columns / B columns. |
 | `K` | `16` | Reduction dimension (stream beats per tile). |
@@ -140,7 +140,7 @@ The APB bus is 32 bits wide; elements are packed least-significant-lane first.
 | `16` | 2 |
 | `32` | 1 |
 
-Example for `DATA_W = 16`: `PWDATA = (el_1 << 16) | el_0`.
+Example for `DATA_W = 8`: `PWDATA = (el_3 << 24) | (el_2 << 16) | (el_1 << 8) | el_0`.
 
 ### Streaming
 

@@ -70,8 +70,8 @@ flowchart LR
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `DATA_W` | `16` | Bit-width of the signed input operands. |
-| `ACC_W` | `32` | Accumulator width — `2 × DATA_W`, so products never overflow. |
+| `DATA_W` | `8` | Bit-width of the signed input operands (INT8 baseline; configurable to `8`/`16`/`32`). |
+| `ACC_W` | `32` | Accumulator width (fixed 32). A single `2*DATA_W`-bit product always fits; summing `K` products wraps mod `2^32` in two's-complement (no saturation). |
 
 ## Ports
 

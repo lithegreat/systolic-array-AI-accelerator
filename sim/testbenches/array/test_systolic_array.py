@@ -10,13 +10,13 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
-from golden import matmul_ref, random_matrix, to_signed, to_unsigned
+from golden import random_matrix, to_signed, to_unsigned
 from golden_array import expected_drain
 
 M = int(os.environ.get("M", "16"))
 N = int(os.environ.get("N", "16"))
 K = int(os.environ.get("K", "16"))
-DATA_W = int(os.environ.get("DATA_W", "16"))
+DATA_W = int(os.environ.get("DATA_W", "8"))
 ACC_W = int(os.environ.get("ACC_W", "32"))
 
 
@@ -135,7 +135,10 @@ async def run_one_tile(
 async def test_identity_b_returns_a(dut) -> None:
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
     await reset_dut(dut)
-    a = np.arange(1, M * K + 1, dtype=np.int64).reshape(M, K)
+    # A values constrained to the signed DATA_W range so they survive element
+    # packing unchanged (identity B returns A). Plain 1..M*K ramp for DATA_W>=9;
+    # folds into [0,127] at INT8.
+    a = (np.arange(1, M * K + 1, dtype=np.int64) % (1 << (DATA_W - 1))).reshape(M, K)
     b = np.eye(K, N, dtype=np.int64)
     await run_one_tile(dut, a, b)
 
