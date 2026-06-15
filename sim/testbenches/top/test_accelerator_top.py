@@ -39,6 +39,9 @@ OFF_C_CTRL = 0x80
 
 REG_CTRL = 0x00
 REG_STATUS = 0x04
+REG_M_DIM = 0x08
+REG_N_DIM = 0x0C
+REG_K_DIM = 0x18
 
 CTRL_START = 1 << 0
 STATUS_DONE = 1 << 1
@@ -144,6 +147,11 @@ async def write_matrix(dut, base: int, off: int, flat) -> None:
 
 
 async def run_matmul(dut, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    # Program full physical dimensions for the legacy/full-tile helper.
+    await apb_write(dut, CTRL_BASE | REG_M_DIM, M)
+    await apb_write(dut, CTRL_BASE | REG_N_DIM, N)
+    await apb_write(dut, CTRL_BASE | REG_K_DIM, K)
+
     # Reset write pointers in input buffer (between runs).
     await apb_write(dut, AB_BASE | OFF_AB_CTRL, 0x1)
     # Reset read pointer in output buffer.
@@ -176,6 +184,41 @@ async def run_matmul(dut, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return c
 
 
+async def run_runtime_matmul(dut, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    runtime_m, runtime_k = a.shape
+    b_k, runtime_n = b.shape
+    assert runtime_k == b_k
+    assert 1 <= runtime_m <= M
+    assert 1 <= runtime_n <= N
+    assert 1 <= runtime_k <= K
+
+    await apb_write(dut, CTRL_BASE | REG_M_DIM, runtime_m)
+    await apb_write(dut, CTRL_BASE | REG_N_DIM, runtime_n)
+    await apb_write(dut, CTRL_BASE | REG_K_DIM, runtime_k)
+
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, 0x1)
+    await apb_write(dut, C_BASE | OFF_C_CTRL, 0x1)
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b.flatten()))
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("STATUS.done was never asserted for runtime tile")
+
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    c = np.zeros((runtime_m, runtime_n), dtype=np.int64)
+    for i in range(runtime_m):
+        for j in range(runtime_n):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            c[i, j] = to_signed(word, 32)
+    return c
+
+
 def pad_to_hw(mat: np.ndarray, hw_rows: int, hw_cols: int) -> np.ndarray:
     """Zero-pad a matrix to the hardware tile dimensions."""
     r, c = mat.shape
@@ -187,14 +230,13 @@ def pad_to_hw(mat: np.ndarray, hw_rows: int, hw_cols: int) -> np.ndarray:
 async def run_submatmul(
     dut, a_sub: np.ndarray, b_sub: np.ndarray, m: int, n: int, k: int
 ) -> np.ndarray:
-    """Run a (m x k) @ (k x n) matmul on the 16x16 HW via zero-padding.
+    """Run a compact (m x k) @ (k x n) runtime tile.
 
-    Returns only the meaningful (m x n) top-left block of the result.
+    Returns the full runtime (m x n) result, with no software zero-padding.
     """
-    a_hw = pad_to_hw(a_sub, M, K)
-    b_hw = pad_to_hw(b_sub, K, N)
-    c_hw = await run_matmul(dut, a_hw, b_hw)
-    return c_hw[:m, :n]
+    assert a_sub.shape == (m, k)
+    assert b_sub.shape == (k, n)
+    return await run_runtime_matmul(dut, a_sub, b_sub)
 
 
 @cocotb.test()
@@ -231,6 +273,25 @@ async def test_top_edge_case_matrices(dut) -> None:
             cocotb.log.error(f"ref=\n{ref}")
             cocotb.log.error(f"got=\n{got}")
             raise AssertionError(f"edge-case matmul mismatch: {case}")
+
+
+@cocotb.test()
+async def test_top_compact_runtime_tiles(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    cases = [(1, 1, 1), (3, 5, 2), (min(7, M), min(6, N), min(4, K))]
+    rng = random.Random(0xD1CE)
+    for m, n, k in cases:
+        a = random_matrix(m, k, DATA_W, rng).astype(np.int64)
+        b = random_matrix(k, n, DATA_W, rng).astype(np.int64)
+        ref = matmul_ref(a, b, ACC_W)
+        got = await run_runtime_matmul(dut, a, b)
+        if not np.array_equal(got, ref):
+            cocotb.log.error(f"runtime tile {m}x{n}x{k}: mismatch")
+            cocotb.log.error(f"ref=\n{ref}")
+            cocotb.log.error(f"got=\n{got}")
+            raise AssertionError(f"runtime tile mismatch {m}x{n}x{k}")
 
 
 @cocotb.test()

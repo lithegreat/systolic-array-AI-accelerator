@@ -56,6 +56,8 @@ async def reset_dut(dut) -> None:
     dut.c_in_valid.value = 0
     dut.c_row_data_in.value = 0
     dut.c_row_in.value = 0
+    dut.cfg_m_dim.value = M
+    dut.cfg_n_dim.value = N
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -203,3 +205,38 @@ async def test_extra_capture_ignored_after_full(dut) -> None:
     for expected in first_row:
         got = await apb.read(OFF_DATA)
         assert got == expected, f"extra capture overwrote full buffer: got 0x{got:x}"
+
+
+@cocotb.test()
+async def test_runtime_compact_capture_and_readback(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    runtime_m = min(5, M)
+    runtime_n = min(7, N)
+    dut.cfg_m_dim.value = runtime_m
+    dut.cfg_n_dim.value = runtime_n
+
+    expected = []
+    for row in range(runtime_m):
+        row_vals = [0x200 + row * runtime_n + col for col in range(runtime_n)]
+        expected.extend(row_vals)
+        padded_row = row_vals + [0] * (N - runtime_n)
+        dut.c_row_data_in.value = pack_row(padded_row, ACC_W)
+        dut.c_row_in.value = row
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"runtime capture_full should be set, got 0x{ctrl_val:x}"
+
+    for ref in expected:
+        got = await apb.read(OFF_DATA)
+        assert got == ref, f"compact C readback mismatch: got 0x{got:x} ref=0x{ref:x}"
+
+    _, ready, err = await apb_read_sample_error(dut, OFF_DATA)
+    assert ready == 1
+    assert err == 1, "read beyond runtime M*N should raise PSLVERR"

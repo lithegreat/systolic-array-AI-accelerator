@@ -50,6 +50,14 @@ module control_unit
     output logic                     array_clear,
     input  logic                     array_done,
 
+    // Runtime tile dimensions (clamped to the physical build dimensions).
+    output logic [APB_DW-1:0]        cfg_m_dim,
+    output logic [APB_DW-1:0]        cfg_n_dim,
+    output logic [APB_DW-1:0]        cfg_k_dim,
+    output logic [APB_DW-1:0]        run_m_dim,
+    output logic [APB_DW-1:0]        run_n_dim,
+    output logic [APB_DW-1:0]        run_k_dim,
+
     // Performance event inputs from accelerator_top
     input  logic                     perf_apb_write,
     input  logic                     perf_apb_read,
@@ -73,6 +81,9 @@ module control_unit
     logic [APB_DW-1:0] reg_m_dim;
     logic [APB_DW-1:0] reg_n_dim;
     logic [APB_DW-1:0] reg_k_dim;
+    logic [APB_DW-1:0] latched_m_dim;
+    logic [APB_DW-1:0] latched_n_dim;
+    logic [APB_DW-1:0] latched_k_dim;
     logic [APB_DW-1:0] reg_int_en;
     logic [APB_DW-1:0] reg_int_stat;
     logic [APB_DW-1:0] perf_cycles;
@@ -95,6 +106,23 @@ module control_unit
 
     logic apb_write_strobe;
     assign apb_write_strobe = apb_access && PWRITE;
+
+    function automatic logic [APB_DW-1:0] clamp_dim(
+        input logic [APB_DW-1:0] value,
+        input int unsigned max_value
+    );
+        logic [APB_DW-1:0] max_word;
+        begin
+            max_word = APB_DW'(max_value);
+            if (value == '0) begin
+                clamp_dim = APB_DW'(1);
+            end else if (value > max_word) begin
+                clamp_dim = max_word;
+            end else begin
+                clamp_dim = value;
+            end
+        end
+    endfunction
 
     // -------------------------------------------------------------------------
     // Compute FSM
@@ -132,6 +160,12 @@ module control_unit
     assign start_pulse  = ctrl_start_w && (cstate_q == C_IDLE);
 
     assign done_event = array_done;
+    assign cfg_m_dim  = reg_m_dim;
+    assign cfg_n_dim  = reg_n_dim;
+    assign cfg_k_dim  = reg_k_dim;
+    assign run_m_dim  = latched_m_dim;
+    assign run_n_dim  = latched_n_dim;
+    assign run_k_dim  = latched_k_dim;
 
     logic perf_clear_w;
     assign perf_clear_w = apb_write_strobe && (reg_off == REG_PERF_CTRL[7:0]) && PWDATA[PERF_CLEAR_BIT];
@@ -161,6 +195,9 @@ module control_unit
             reg_m_dim    <= APB_DW'(M);
             reg_n_dim    <= APB_DW'(N);
             reg_k_dim    <= APB_DW'(K);
+            latched_m_dim <= APB_DW'(M);
+            latched_n_dim <= APB_DW'(N);
+            latched_k_dim <= APB_DW'(K);
             reg_int_en   <= '0;
             reg_int_stat <= '0;
             perf_cycles           <= '0;
@@ -199,10 +236,19 @@ module control_unit
             else if (apb_write_strobe && reg_off == REG_STATUS[7:0] && PWDATA[STATUS_DONE_BIT])
                 reg_status[STATUS_DONE_BIT] <= 1'b0;
 
-            // Dim regs.
-            if (apb_write_strobe && reg_off == REG_M_DIM[7:0]) reg_m_dim <= PWDATA;
-            if (apb_write_strobe && reg_off == REG_N_DIM[7:0]) reg_n_dim <= PWDATA;
-            if (apb_write_strobe && reg_off == REG_K_DIM[7:0]) reg_k_dim <= PWDATA;
+            // Runtime dimension registers. Writes are accepted only while idle;
+            // this keeps an in-flight tile's compact layout stable.
+            if (cstate_q == C_IDLE) begin
+                if (apb_write_strobe && reg_off == REG_M_DIM[7:0]) begin
+                    reg_m_dim <= clamp_dim(PWDATA, M);
+                end
+                if (apb_write_strobe && reg_off == REG_N_DIM[7:0]) begin
+                    reg_n_dim <= clamp_dim(PWDATA, N);
+                end
+                if (apb_write_strobe && reg_off == REG_K_DIM[7:0]) begin
+                    reg_k_dim <= clamp_dim(PWDATA, K);
+                end
+            end
 
             // INT_EN: simple R/W.
             if (apb_write_strobe && reg_off == REG_INT_EN[7:0]) reg_int_en <= PWDATA;
@@ -230,6 +276,9 @@ module control_unit
                     perf_active         <= 1'b1;
                     perf_in_stall_seen  <= 1'b0;
                     perf_out_stall_seen <= 1'b0;
+                    latched_m_dim       <= reg_m_dim;
+                    latched_n_dim       <= reg_n_dim;
+                    latched_k_dim       <= reg_k_dim;
                 end else if (done_event) begin
                     perf_active <= 1'b0;
                 end

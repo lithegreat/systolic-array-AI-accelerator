@@ -33,6 +33,11 @@ module systolic_array #(
     input  logic                              start,
     output logic                              done,
 
+    // Runtime dimensions (1..physical M/N/K). Inactive rows/columns are masked.
+    input  logic [31:0]                       cfg_m_dim,
+    input  logic [31:0]                       cfg_n_dim,
+    input  logic [31:0]                       cfg_k_dim,
+
     // Streaming input (one column of A and one row of B per beat).
     input  logic                              in_valid,
     output logic                              in_ready,
@@ -70,10 +75,15 @@ module systolic_array #(
     logic accept_in;   // (in_valid && in_ready)
     logic accept_out;  // (out_valid && out_ready)
 
-    assign in_ready  = (state_q == S_RUN) && (k_cnt_q < K[K_W-1:0]);
+    logic [31:0] compute_last;
+    logic [31:0] drain_last;
+    assign compute_last = cfg_m_dim + cfg_n_dim + cfg_k_dim - 32'd3;
+    assign drain_last   = cfg_m_dim - 32'd1;
+
+    assign in_ready  = (state_q == S_RUN) && (32'(k_cnt_q) < cfg_k_dim);
     assign accept_in = in_ready && in_valid;
     // While loading we wait for input; after load the pipeline ticks every cycle.
-    assign step      = (state_q == S_RUN) && ((k_cnt_q >= K[K_W-1:0]) || in_valid);
+    assign step      = (state_q == S_RUN) && ((32'(k_cnt_q) >= cfg_k_dim) || in_valid);
 
     assign out_valid  = (state_q == S_DRAIN);
     assign accept_out = out_valid && out_ready;
@@ -83,9 +93,9 @@ module systolic_array #(
         state_d = state_q;
         unique case (state_q)
             S_IDLE: if (start) state_d = S_RUN;
-            S_RUN:  if (step && (t_cnt_q == COMPUTE_CYCLES[T_W-1:0] - 1))
+            S_RUN:  if (step && (32'(t_cnt_q) == compute_last))
                         state_d = S_DRAIN;
-            S_DRAIN: if (accept_out && (d_cnt_q == DRAIN_COUNT[D_W-1:0] - 1))
+            S_DRAIN: if (accept_out && (32'(d_cnt_q) == drain_last))
                         state_d = S_DONE;
             S_DONE: state_d = S_IDLE;
             default: state_d = S_IDLE;
@@ -144,10 +154,10 @@ module systolic_array #(
     logic signed [DATA_W-1:0] b_feed [N];
     generate
         for (gi = 0; gi < M; gi++) begin : g_a_feed
-            assign a_feed[gi] = (k_cnt_q < K[K_W-1:0]) ? a_col_arr[gi] : '0;
+            assign a_feed[gi] = (32'(k_cnt_q) < cfg_k_dim) ? a_col_arr[gi] : '0;
         end
         for (gj = 0; gj < N; gj++) begin : g_b_feed
-            assign b_feed[gj] = (k_cnt_q < K[K_W-1:0]) ? b_row_arr[gj] : '0;
+            assign b_feed[gj] = (32'(k_cnt_q) < cfg_k_dim) ? b_row_arr[gj] : '0;
         end
     endgenerate
 
@@ -190,8 +200,10 @@ module systolic_array #(
                 logic clr_pe;
                 // Window: t in [i+j, i+j+K-1]
                 assign en_pe  = step
-                                && (t_cnt_q >= (gi + gj))
-                                && (t_cnt_q <  (gi + gj + K));
+                                && (32'(gi) < cfg_m_dim)
+                                && (32'(gj) < cfg_n_dim)
+                                && (32'(t_cnt_q) >= (32'(gi) + 32'(gj)))
+                                && (32'(t_cnt_q) <  (32'(gi) + 32'(gj) + cfg_k_dim));
                 assign clr_pe = en_pe && (t_cnt_q == (gi + gj));
 
                 mac_pe #(

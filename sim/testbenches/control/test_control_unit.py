@@ -114,10 +114,18 @@ async def test_register_rw(dut) -> None:
     await apb.write(REG_K_DIM, 32)
     assert (await apb.read(REG_M_DIM)) == 8
     assert (await apb.read(REG_N_DIM)) == 16
-    assert (await apb.read(REG_K_DIM)) == 32
+    assert (await apb.read(REG_K_DIM)) == 16
 
     await apb.write(REG_INT_EN, 0x1)
     assert (await apb.read(REG_INT_EN)) == 0x1
+
+    # Runtime dimensions are clamped into 1..physical when idle.
+    await apb.write(REG_M_DIM, 0)
+    await apb.write(REG_N_DIM, 999)
+    await apb.write(REG_K_DIM, 0)
+    assert (await apb.read(REG_M_DIM)) == 1
+    assert (await apb.read(REG_N_DIM)) == 16
+    assert (await apb.read(REG_K_DIM)) == 1
 
 
 @cocotb.test()
@@ -202,6 +210,30 @@ async def test_start_while_busy_is_ignored(dut) -> None:
         await RisingEdge(dut.clk_in)
         saw_second_start |= bool(int(dut.array_start.value))
     assert not saw_second_start, "CTRL.start while BUSY should not re-issue array_start"
+
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+
+
+@cocotb.test()
+async def test_dimension_writes_ignored_while_busy(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_M_DIM, 4)
+    await apb.write(REG_N_DIM, 5)
+    await apb.write(REG_K_DIM, 6)
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+    await apb.write(REG_M_DIM, 7)
+    await apb.write(REG_N_DIM, 8)
+    await apb.write(REG_K_DIM, 9)
+    assert (await apb.read(REG_M_DIM)) == 4
+    assert (await apb.read(REG_N_DIM)) == 5
+    assert (await apb.read(REG_K_DIM)) == 6
 
     dut.array_done.value = 1
     await RisingEdge(dut.clk_in)

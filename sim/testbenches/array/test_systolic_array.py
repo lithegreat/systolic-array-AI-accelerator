@@ -31,6 +31,9 @@ def pack_vec(values, width: int) -> int:
 async def reset_dut(dut) -> None:
     dut.rst_n.value = 0
     dut.start.value = 0
+    dut.cfg_m_dim.value = M
+    dut.cfg_n_dim.value = N
+    dut.cfg_k_dim.value = K
     dut.in_valid.value = 0
     dut.out_ready.value = 0
     dut.a_col.value = 0
