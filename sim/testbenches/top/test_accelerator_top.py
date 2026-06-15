@@ -44,6 +44,55 @@ CTRL_START = 1 << 0
 STATUS_DONE = 1 << 1
 STATUS_BUSY = 1 << 0
 
+MULTI_SEEDS = (0x1234, 0xACCE, 0xBEEF, 0xC0DE)
+EDGE_CASES = ("zero", "identity", "checkerboard", "maxpos", "minneg", "minmax")
+
+
+def edge_matrix_pair(
+    case: str, m: int, n: int, k: int, data_w: int
+) -> tuple[np.ndarray, np.ndarray]:
+    lo = -(1 << (data_w - 1))
+    hi = (1 << (data_w - 1)) - 1
+    if case == "zero":
+        a = np.zeros((m, k), dtype=np.int64)
+        b = np.zeros((k, n), dtype=np.int64)
+    elif case == "identity":
+        a = np.zeros((m, k), dtype=np.int64)
+        b = np.arange(1, k * n + 1, dtype=np.int64).reshape(k, n) % (1 << (data_w - 1))
+        for idx in range(min(m, k)):
+            a[idx, idx] = 1
+    elif case == "checkerboard":
+        a = np.fromfunction(
+            lambda row, col: np.where(((row + col) % 2) == 0, hi, lo),
+            (m, k),
+            dtype=int,
+        ).astype(np.int64)
+        b = np.fromfunction(
+            lambda row, col: np.where(((row + col) % 2) == 0, lo, hi),
+            (k, n),
+            dtype=int,
+        ).astype(np.int64)
+    elif case == "maxpos":
+        a = np.full((m, k), hi, dtype=np.int64)
+        b = np.full((k, n), hi, dtype=np.int64)
+    elif case == "minneg":
+        a = np.full((m, k), lo, dtype=np.int64)
+        b = np.full((k, n), lo, dtype=np.int64)
+    elif case == "minmax":
+        a = np.fromfunction(
+            lambda row, col: np.where((col % 2) == 0, lo, hi),
+            (m, k),
+            dtype=int,
+        ).astype(np.int64)
+        b = np.fromfunction(
+            lambda row, col: np.where((row % 2) == 0, hi, lo),
+            (k, n),
+            dtype=int,
+        ).astype(np.int64)
+    else:
+        raise ValueError(case)
+    return a, b
+
 
 async def apb_write(dut, addr: int, data: int) -> None:
     dut.PADDR.value = int(addr)
@@ -153,10 +202,10 @@ async def test_top_random_matmul(dut) -> None:
     cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
     await reset_top(dut)
 
-    rng = random.Random(0x1234)
-    for trial in range(3):
-        a = random_matrix(M, K, 8, rng).astype(np.int64)
-        b = random_matrix(K, N, 8, rng).astype(np.int64)
+    for trial, seed in enumerate(MULTI_SEEDS):
+        rng = random.Random(seed)
+        a = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+        b = random_matrix(K, N, DATA_W, rng).astype(np.int64)
         ref = matmul_ref(a, b, ACC_W)
         got = await run_matmul(dut, a, b)
         if not np.array_equal(got, ref):
@@ -165,7 +214,23 @@ async def test_top_random_matmul(dut) -> None:
             cocotb.log.error(f"b=\n{b}")
             cocotb.log.error(f"ref=\n{ref}")
             cocotb.log.error(f"got=\n{got}")
-            raise AssertionError(f"matmul mismatch on trial {trial}")
+            raise AssertionError(f"matmul mismatch on trial {trial} seed 0x{seed:x}")
+
+
+@cocotb.test()
+async def test_top_edge_case_matrices(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    for case in EDGE_CASES:
+        a, b = edge_matrix_pair(case, M, N, K, DATA_W)
+        ref = matmul_ref(a, b, ACC_W)
+        got = await run_matmul(dut, a, b)
+        if not np.array_equal(got, ref):
+            cocotb.log.error(f"edge case {case}: mismatch")
+            cocotb.log.error(f"ref=\n{ref}")
+            cocotb.log.error(f"got=\n{got}")
+            raise AssertionError(f"edge-case matmul mismatch: {case}")
 
 
 @cocotb.test()

@@ -184,6 +184,53 @@ async def test_soft_reset(dut) -> None:
 
 
 @cocotb.test()
+async def test_start_while_busy_is_ignored(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+
+    status = await apb.read(REG_STATUS)
+    assert status & STATUS_BUSY, f"expected BUSY before second start, got 0x{status:x}"
+
+    await apb.write(REG_CTRL, CTRL_START)
+    saw_second_start = False
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+        saw_second_start |= bool(int(dut.array_start.value))
+    assert not saw_second_start, "CTRL.start while BUSY should not re-issue array_start"
+
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+
+
+@cocotb.test()
+async def test_status_done_w1c(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+
+    status = await apb.read(REG_STATUS)
+    assert status & STATUS_DONE, f"expected DONE before W1C, got 0x{status:x}"
+    await apb.write(REG_STATUS, STATUS_DONE)
+    status = await apb.read(REG_STATUS)
+    assert not (status & STATUS_DONE), f"DONE should clear after W1C, got 0x{status:x}"
+
+
+@cocotb.test()
 async def test_read_ctrl_and_int_stat_registers(dut) -> None:
     """Read REG_CTRL, REG_INT_STAT, and an unmapped address to hit the read-mux default."""
     cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
