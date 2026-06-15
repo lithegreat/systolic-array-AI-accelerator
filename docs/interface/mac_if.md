@@ -106,10 +106,14 @@ flowchart LR
   - `clear_acc = 1` → `acc ← a_in × b_in`
   - `clear_acc = 0` → `acc ← acc + a_in × b_in`
 - **Systolic pulse.** `a_out` and `b_out` are flip-flops, so operands advance one PE per cycle.
-- **No precision loss.** With `ACC_W = 32`, summing 16-bit products never overflows.
+- **Accumulator semantics.** The product is sign-extended into `ACC_W`, and the
+   accumulator wraps in two's-complement arithmetic on overflow (no saturation).
 
 $$\text{acc} \leftarrow (a\_in \times b\_in) + \text{acc}$$
 
 ## Notes
 
 - `pe_out` is a combinational tap of the accumulator register (no extra pipeline stage).
+- The default named build variant is `int8_16x16`; wider datapaths remain useful
+   for comparison, but software golden data must be regenerated for the matching
+   `DATA_W`.

@@ -5,7 +5,7 @@
 > diving into any module; then follow the links into the
 > [interface contracts](interface/README.md) or the code.
 
-Last reviewed: 2026-06-13
+Last reviewed: 2026-06-15
 
 ## Bird's-eye view
 
@@ -25,9 +25,10 @@ RISC-V Ibex ──OBI──> SoC fabric ──APB──> [ accelerator_top ]
 
 Dataflow is **output-stationary**: Matrix A streams in row-major, Matrix B
 streams in, each PE accumulates one `C[i][j]` over K steps, and Matrix C is read
-back element-by-element. Handshakes are valid/ready throughout. Defaults:
-`M=N=K=16`, `DATA_W=16` signed, `ACC_W=32` (two's-complement wrap, no
-saturation).
+back element-by-element. Handshakes are valid/ready throughout. The default
+simulation/SoC build variant is `int8_16x16`: `M=N=K=16`, `DATA_W=8` signed,
+`ACC_W=32` (two's-complement wrap, no saturation). Build variants are cataloged
+in [`sim/common/c_code/accel_config.py`](../sim/common/c_code/accel_config.py).
 
 ## Domain map (ownership)
 
