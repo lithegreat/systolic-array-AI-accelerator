@@ -126,5 +126,6 @@ flowchart LR
 ## Notes
 
 - C drains in row-major order.
-- Drain index decoding assumes `M` and `N` are powers of two.
+- Drain index decoding works for any positive `M` and `N`; current named build
+   variants use square tiles (`M=N=K`) for the standalone runner and FPGA flow.
 - Assumes the A/B buffer provides one aligned `(a_col, b_row)` pair per accepted beat.
