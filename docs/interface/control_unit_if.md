@@ -15,7 +15,8 @@ subordinate port and drives the FSM that runs one output-stationary tile. The
 matrix buffers stream autonomously, so the control unit only issues start/clear
 pulses and tracks completion — it never addresses matrix memory directly. It
 also exposes build/status and lightweight performance counters so firmware can
-observe how a run behaved.
+observe how a run behaved. `M_DIM`, `N_DIM`, and `K_DIM` are real runtime tile
+dimensions: they select a compact tile up to the physical build shape.
 
 ## Block diagram
 
@@ -117,6 +118,13 @@ counter block. They are not software-controlled signals.
 | `perf_input_stall` | Input | `1` | High when the array is ready for an input beat but the A/B streamer is not valid. |
 | `perf_output_stall` | Input | `1` | High when the array has an output row valid but downstream is not ready. |
 
+### Runtime dimensions
+
+| Port | Direction | Width | Description |
+| --- | --- | --- | --- |
+| `cfg_m_dim`, `cfg_n_dim`, `cfg_k_dim` | Output | `APB_DW` | Pending runtime dimensions from the APB registers, clamped to `1..M/N/K`; used by the A/B preload path while software writes compact tiles before `start`. |
+| `run_m_dim`, `run_n_dim`, `run_k_dim` | Output | `APB_DW` | Dimensions latched on an accepted `start`; used by the array and C capture/readback so a completed tile's result window is stable. |
+
 ### Accelerator control
 
 | Port | Direction | Width | Description |
@@ -133,11 +141,11 @@ The unit decodes registers using `PADDR[7:0]`, so it can sit behind a top-level 
 | --- | --- | --- | --- |
 | `0x00` | `CTRL` | R/W | Bit `0`: start pulse request. Bit `1`: soft reset. |
 | `0x04` | `STATUS` | R/W1C | Bit `0`: busy. Bit `1`: done (cleared by writing `1` to bit `1`). |
-| `0x08` | `M_DIM` | R/W | M dimension, default `16`. |
-| `0x0C` | `N_DIM` | R/W | N dimension, default `16`. |
+| `0x08` | `M_DIM` | R/W | Runtime M dimension, clamped to `1..physical M`, default `16`. Writes while busy are ignored. |
+| `0x0C` | `N_DIM` | R/W | Runtime N dimension, clamped to `1..physical N`, default `16`. Writes while busy are ignored. |
 | `0x10` | `INT_EN` | R/W | Bit `0`: done-interrupt enable. |
 | `0x14` | `INT_STAT` | R/W1C | Bit `0`: done-interrupt pending. |
-| `0x18` | `K_DIM` | R/W | K reduction dimension, default `16`. |
+| `0x18` | `K_DIM` | R/W | Runtime K reduction dimension, clamped to `1..physical K`, default `16`. Writes while busy are ignored. |
 | `0x1C` | `BUILD_INFO` | R/O | Build-time geometry: bits `[7:0]=M`, `[15:8]=N`, `[23:16]=K`, `[31:24]=DATA_W`. |
 | `0x20` | `HW_STATUS` | R/O | Bit `0`: performance counters active. Bit `1`: input stall seen. Bit `2`: output stall seen. Bit `3`: counter overflow seen. Bits `[9:8]`: control FSM state. |
 | `0x24` | `PERF_CTRL` | W/O | Bit `0`: clear performance counters and sticky status bits. Reads return zero. |
@@ -155,6 +163,19 @@ The unit decodes registers using `PADDR[7:0]`, so it can sit behind a top-level 
 - **`ISSUE`** — assert `array_start` and `array_clear` for one cycle.
 - **`BUSY`** — wait for `array_done` from the array.
 - **`DONE`** — set `STATUS.done` and `INT_STAT.done`, then return to `IDLE`.
+
+### Runtime tile layout
+
+For a runtime tile `(m, n, k) = (M_DIM, N_DIM, K_DIM)`, software writes compact
+row-major tiles:
+
+- A has `m*k` elements, with `A[i,k] -> i*K_DIM + k`.
+- B has `k*n` elements, with `B[k,j] -> k*N_DIM + j`.
+- C reads back `m*n` elements, with `C[i,j] -> i*N_DIM + j`.
+
+The physical array lanes outside `m` rows or `n` columns are zero-masked. The
+dimension registers are latched on accepted start, so result readback remains
+stable even after the FSM returns to idle.
 
 ## Notes
 

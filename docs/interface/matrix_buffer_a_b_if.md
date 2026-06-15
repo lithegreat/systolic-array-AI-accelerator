@@ -12,11 +12,12 @@
 
 `matrix_buffer_ab` stores Matrix A and Matrix B behind a 32-bit APB subordinate
 port, then streams one A column and one B row per accepted beat into the
-output-stationary systolic array. Geometry is fixed per build (`M`, `N`, `K`), and
-matrices are stored row-major:
+output-stationary systolic array. Physical storage is fixed per build (`M`, `N`,
+`K`), while runtime dimensions select a compact tile inside that physical shape.
+For runtime dimensions `(m, n, k)`, matrices are written row-major:
 
-- `A[i,k]` at linear offset `i*K + k`
-- `B[k,j]` at linear offset `k*N + j`
+- `A[i,k]` at linear offset `i*k + k` for `i < m`
+- `B[k,j]` at linear offset `k*n + j` for `j < n`
 
 ## Block diagram
 
@@ -111,6 +112,9 @@ flowchart TB
 | `mat_start` | Input | `1` | One-cycle pulse that starts a K-beat stream. |
 | `mat_valid` | Output | `1` | Stream beat valid. |
 | `sys_ready` | Input | `1` | Systolic array ready to consume a beat. |
+| `cfg_m_dim` | Input | `APB_DW` | Pending runtime M dimension used to size compact A writes and zero-mask inactive rows. |
+| `cfg_n_dim` | Input | `APB_DW` | Pending runtime N dimension used to size compact B writes and zero-mask inactive columns. |
+| `cfg_k_dim` | Input | `APB_DW` | Pending runtime K dimension used as the stream length and compact A/B row stride. |
 | `a_col` | Output | `M*DATA_W` | Packed A column for the current `k`. |
 | `b_row` | Output | `N*DATA_W` | Packed B row for the current `k`. |
 
@@ -124,7 +128,9 @@ flowchart TB
 
 APB access rules:
 
-- **Overflow protection.** Writes beyond capacity (`M*K` for A, `K*N` for B) are safely ignored.
+- **Overflow protection.** Writes beyond the active compact tile (`M_DIM*K_DIM`
+   for A, `K_DIM*N_DIM` for B) are safely ignored and assert `PSLVERR` on the
+   overrun access.
 - **Write-only reads.** Reading `0x00` or `0x40` does not raise a slave error; it returns `0x00000000`.
 - **Transient reset.** Writing `1` to `MAT_CTRL[0]` resets the pointers in the same cycle and self-clears, so software need not write `0` back.
 
@@ -144,11 +150,15 @@ Example for `DATA_W = 8`: `PWDATA = (el_3 << 24) | (el_2 << 16) | (el_1 << 8) | 
 
 ### Streaming
 
-- Software writes A and B in row-major order.
-- On `mat_start`, the buffer begins a `K`-beat stream.
-- Beat `k` drives `a_col[i] = A[i,k]` (`i = 0..M-1`) and `b_row[j] = B[k,j]` (`j = 0..N-1`).
+- Software writes compact A and B tiles in row-major order using the pending
+   runtime dimensions from `cfg_*_dim`.
+- On `mat_start`, the buffer begins a `K_DIM`-beat stream.
+- Beat `k` drives `a_col[i] = A[i,k]` for `i < M_DIM`, otherwise zero, and
+   `b_row[j] = B[k,j]` for `j < N_DIM`, otherwise zero.
 - A beat is consumed only when `mat_valid && sys_ready`.
 
 ## Notes
 
-- Storage geometry is fixed at build time by `M`, `N`, and `K`.
+- Storage geometry is fixed at build time by `M`, `N`, and `K`; compact runtime
+   tiles reuse the same storage from offset zero after `MAT_CTRL[0]` resets the
+   write pointers.

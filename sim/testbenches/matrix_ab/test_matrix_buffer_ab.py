@@ -34,6 +34,9 @@ async def reset_dut(dut) -> None:
     dut.PWDATA.value = 0
     dut.mat_start.value = 0
     dut.sys_ready.value = 0
+    dut.cfg_m_dim.value = M
+    dut.cfg_n_dim.value = N
+    dut.cfg_k_dim.value = K
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -233,3 +236,52 @@ async def test_stream_holds_under_backpressure(dut) -> None:
         assert lane(first_a, i, DATA_W) == int(a[i, 0])
     for j in range(N):
         assert lane(first_b, j, DATA_W) == int(b[0, j])
+
+
+@cocotb.test()
+async def test_runtime_compact_tile_stream(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    runtime_m = min(5, M)
+    runtime_n = min(7, N)
+    runtime_k = min(3, K)
+    dut.cfg_m_dim.value = runtime_m
+    dut.cfg_n_dim.value = runtime_n
+    dut.cfg_k_dim.value = runtime_k
+
+    a = np.arange(runtime_m * runtime_k, dtype=np.int64).reshape(runtime_m, runtime_k)
+    b = (
+        np.arange(runtime_k * runtime_n, dtype=np.int64).reshape(runtime_k, runtime_n)
+        + 1
+    )
+    a %= 1 << (DATA_W - 1)
+    b %= 1 << (DATA_W - 1)
+
+    await write_matrix(apb, OFF_A, list(a.flatten()))
+    await write_matrix(apb, OFF_B, list(b.flatten()))
+
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"runtime A-full should be set, got 0x{ctrl_val:x}"
+    assert ctrl_val & 0x4, f"runtime B-full should be set, got 0x{ctrl_val:x}"
+
+    dut.sys_ready.value = 1
+    dut.mat_start.value = 1
+    await RisingEdge(dut.clk)
+    dut.mat_start.value = 0
+
+    captured = []
+    while len(captured) < runtime_k:
+        await Timer(1, unit="ns")
+        if int(dut.mat_valid.value) and int(dut.sys_ready.value):
+            captured.append((int(dut.a_col.value), int(dut.b_row.value)))
+        await RisingEdge(dut.clk)
+
+    for k_idx, (a_bus, b_bus) in enumerate(captured):
+        for row in range(M):
+            expected = int(a[row, k_idx]) if row < runtime_m else 0
+            assert lane(a_bus, row, DATA_W) == expected
+        for col in range(N):
+            expected = int(b[k_idx, col]) if col < runtime_n else 0
+            assert lane(b_bus, col, DATA_W) == expected
