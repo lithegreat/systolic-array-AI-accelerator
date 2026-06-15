@@ -94,10 +94,26 @@ module accelerator_top
     logic [N*ACC_W-1:0]  c_row_data;
     logic [$clog2((M>1)?M:2)-1:0] c_row;
 
+    logic perf_apb_complete;
+    logic perf_apb_write;
+    logic perf_apb_read;
+    logic perf_input_stall;
+    logic perf_output_stall;
+
+    assign perf_apb_complete = PSEL && PENABLE && PREADY;
+    assign perf_apb_write    = perf_apb_complete && PWRITE;
+    assign perf_apb_read     = perf_apb_complete && !PWRITE;
+    assign perf_input_stall  = sys_ready && !mat_valid;
+    assign perf_output_stall = out_valid && !out_ready;
+
     // -------------------------------------------------------------------------
     // control_unit
     // -------------------------------------------------------------------------
     control_unit #(
+        .DATA_W   (DATA_W),
+        .M        (M),
+        .N        (N),
+        .K        (K),
         .APB_AW   (APB_AW),
         .APB_DW   (APB_DW)
     ) u_control (
@@ -116,7 +132,11 @@ module accelerator_top
         .irq_4        (irq_4),
         .array_start  (array_start),
         .array_clear  (array_clear),
-        .array_done   (array_done)
+        .array_done   (array_done),
+        .perf_apb_write(perf_apb_write),
+        .perf_apb_read(perf_apb_read),
+        .perf_input_stall(perf_input_stall),
+        .perf_output_stall(perf_output_stall)
     );
 
     // -------------------------------------------------------------------------
