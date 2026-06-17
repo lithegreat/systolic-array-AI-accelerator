@@ -18,7 +18,7 @@ Last reviewed: 2026-06-13
 | ID | Area | Description | Impact | Link |
 | --- | --- | --- | --- | --- |
 | TD-1 | SoC / QuestaSim | Full-SoC QuestaSim run needs `vopt +initreg+0` to clear the Ibex fetch-FIFO 4-state X (unreset `rdata_q` with `ResetAll=0`). Worked around in the sim Makefile, not fixed in SoC RTL. | QuestaSim flow depends on a tool flag; a vendor IP bump could reintroduce the X. | [verification report §5](../verification/accelerator_soc_report.md) |
-| TD-2 | Verification | Functional-coverage baseline is below target; stall/back-pressure and buffer over-run paths are thinly covered. | Corner-case regressions may slip through. | [ARCHITECTURE scorecard](../ARCHITECTURE.md#maturity-scorecard) |
+| TD-2 | Verification | Functional-coverage baseline is below target; stall/back-pressure and buffer over-run paths are thinly covered. **Partially addressed**: new cocotb tests added for control_unit (start-while-busy, IRQ masking, back-to-back compute), matrix_buffer_ab (A/B overflow PSLVERR, streaming backpressure), and matrix_buffer_c (read-past-end PSLVERR, double capture, interleaved capture/read). | Corner-case regressions may slip through. Remaining: raise Verilator line-coverage baseline further. | [ARCHITECTURE scorecard](../ARCHITECTURE.md#maturity-scorecard) |
 | TD-3 | ASIC | No gate-level netlist or timing closure yet for the GF 22 nm FDX target. | ASIC deliverable not yet started. | [ARCHITECTURE scorecard](../ARCHITECTURE.md#maturity-scorecard) |
 
 <!-- Add new rows above. Keep IDs stable; do not renumber on removal. -->
