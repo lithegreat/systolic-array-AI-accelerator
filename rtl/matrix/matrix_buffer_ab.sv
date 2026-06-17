@@ -106,14 +106,18 @@ module matrix_buffer_ab
                         if ((a_wptr + e) < A_DEPTH)
                             mem_a[a_wptr + e] <= PWDATA[e*DATA_W +: DATA_W];
                     end
-                    a_wptr <= a_wptr + EPW;
+                    if (a_wptr < A_DEPTH) begin
+                        a_wptr <= ((a_wptr + EPW) > A_DEPTH) ? A_DEPTH[A_PTR_W-1:0] : (a_wptr + EPW[A_PTR_W-1:0]);
+                    end
                 end
                 if (apb_access && PWRITE && sel_b) begin
                     for (int e = 0; e < EPW; e++) begin
                         if ((b_wptr + e) < B_DEPTH)
                             mem_b[b_wptr + e] <= PWDATA[e*DATA_W +: DATA_W];
                     end
-                    b_wptr <= b_wptr + EPW;
+                    if (b_wptr < B_DEPTH) begin
+                        b_wptr <= ((b_wptr + EPW) > B_DEPTH) ? B_DEPTH[B_PTR_W-1:0] : (b_wptr + EPW[B_PTR_W-1:0]);
+                    end
                 end
             end
         end

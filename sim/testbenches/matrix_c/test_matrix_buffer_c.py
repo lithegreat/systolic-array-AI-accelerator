@@ -7,7 +7,7 @@ import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import RisingEdge, Timer
 
 from apb_bfm import ApbMaster
 from golden import to_unsigned
@@ -133,3 +133,132 @@ async def test_reset_pointer_via_ctrl(dut) -> None:
     await apb.write(OFF_CTRL, 0x1)
     w0b = await apb.read(OFF_DATA)
     assert w0b == 0xDEAD, f"after CTRL reset, expected 0xDEAD got 0x{w0b:x}"
+
+
+@cocotb.test()
+async def test_read_past_end_returns_slverr(dut) -> None:
+    """Reading beyond M*N elements must assert PSLVERR."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Inject all M rows with known data.
+    for i in range(M):
+        dut.c_row_data_in.value = pack_row([i * N + j for j in range(N)], ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # Read out all M*N elements (normal reads).
+    for _ in range(M * N):
+        await apb.read(OFF_DATA)
+
+    # The next read is past the end — PSLVERR must be asserted.
+    dut.PADDR.value = int(OFF_DATA)
+    dut.PWRITE.value = 0
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    assert int(dut.PSLVERR.value) == 1, "PSLVERR should be 1 on read past end"
+    # Data should return 0 on overflow read.
+    assert int(dut.PRDATA.value) == 0, "PRDATA should be 0 on overflow read"
+    await RisingEdge(dut.clk)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+
+
+@cocotb.test()
+async def test_double_capture_overwrites(dut) -> None:
+    """Capturing a second batch of rows overwrites the first in the memory."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # First capture: fill with pattern A (all elements = 0x11).
+    for i in range(M):
+        dut.c_row_data_in.value = pack_row([0x11] * N, ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # Second capture (no pointer/counter reset): fill with pattern B (all = 0x22).
+    # Note: rows_captured is already >= M, so c_in_ready is 0 and the capture
+    # path should NOT accept new data. We verify this.
+    for i in range(M):
+        dut.c_row_data_in.value = pack_row([0x22] * N, ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # Read back — should see pattern A (0x11) since second capture was blocked.
+    for i in range(M):
+        for j in range(N):
+            word = await apb.read(OFF_DATA)
+            assert word == 0x11, (
+                f"C[{i},{j}] expected 0x11 (pattern A, second capture blocked), got 0x{word:x}"
+            )
+
+
+@cocotb.test()
+async def test_capture_interleaved_with_read(dut) -> None:
+    """Capture partial rows, read some elements, capture remaining, read all."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    rng = random.Random(0xCAFE)
+    expected = {}
+
+    half = M // 2
+
+    # Inject the first half of the rows.
+    rows_first = list(range(half))
+    for i in rows_first:
+        row_vals = [
+            rng.randrange(-(1 << (ACC_W - 1)), (1 << (ACC_W - 1))) for _ in range(N)
+        ]
+        for j in range(N):
+            expected[(i, j)] = row_vals[j]
+        dut.c_row_data_in.value = pack_row(row_vals, ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # Read a few elements from the beginning (advances the read pointer).
+    read_count = min(3, half * N)
+    for _ in range(read_count):
+        await apb.read(OFF_DATA)
+
+    # Inject the remaining rows.
+    rows_second = list(range(half, M))
+    for i in rows_second:
+        row_vals = [
+            rng.randrange(-(1 << (ACC_W - 1)), (1 << (ACC_W - 1))) for _ in range(N)
+        ]
+        for j in range(N):
+            expected[(i, j)] = row_vals[j]
+        dut.c_row_data_in.value = pack_row(row_vals, ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    # Reset read pointer and verify all M*N elements.
+    await apb.write(OFF_CTRL, 0x1)
+    for i in range(M):
+        for j in range(N):
+            word = await apb.read(OFF_DATA)
+            ref = expected[(i, j)]
+            ref_u = to_unsigned(ref, ACC_W) & ((1 << 32) - 1)
+            assert word == ref_u, f"C[{i},{j}] dut=0x{word:x} ref=0x{ref_u:x}"
