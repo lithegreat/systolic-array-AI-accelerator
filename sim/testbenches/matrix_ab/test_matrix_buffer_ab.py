@@ -153,3 +153,120 @@ async def test_ctrl_read_full_flags(dut) -> None:
     ctrl_val = await apb.read(OFF_CTRL)
     assert ctrl_val & 0x2, f"A-full flag (bit 1) should be set, got 0x{ctrl_val:x}"
     assert ctrl_val & 0x4, f"B-full flag (bit 2) should be set, got 0x{ctrl_val:x}"
+
+
+@cocotb.test()
+async def test_overwrite_a_past_full(dut) -> None:
+    """Writing to A bank beyond M*K elements must assert PSLVERR."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Fill A exactly to capacity.
+    rng = random.Random(0xAAAA)
+    a = random_matrix(M, K, DATA_W, rng)
+    await write_matrix(apb, OFF_A, list(a.flatten()))
+
+    # Confirm A-full is set.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"A-full should be set, got 0x{ctrl_val:x}"
+
+    # One more APB write to A — should trigger PSLVERR.
+    dut.PADDR.value = int(OFF_A)
+    dut.PWDATA.value = 0xDEAD
+    dut.PWRITE.value = 1
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    assert int(dut.PSLVERR.value) == 1, "PSLVERR should be 1 on A bank overflow"
+    await RisingEdge(dut.clk)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+    dut.PWRITE.value = 0
+
+
+@cocotb.test()
+async def test_overwrite_b_past_full(dut) -> None:
+    """Writing to B bank beyond K*N elements must assert PSLVERR."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Fill B exactly to capacity.
+    rng = random.Random(0xBBBB)
+    b = random_matrix(K, N, DATA_W, rng)
+    await write_matrix(apb, OFF_B, list(b.flatten()))
+
+    # Confirm B-full is set.
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x4, f"B-full should be set, got 0x{ctrl_val:x}"
+
+    # One more APB write to B — should trigger PSLVERR.
+    dut.PADDR.value = int(OFF_B)
+    dut.PWDATA.value = 0xBEEF
+    dut.PWRITE.value = 1
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    assert int(dut.PSLVERR.value) == 1, "PSLVERR should be 1 on B bank overflow"
+    await RisingEdge(dut.clk)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+    dut.PWRITE.value = 0
+
+
+@cocotb.test()
+async def test_backpressure_stalls_stream(dut) -> None:
+    """Toggling sys_ready low mid-stream must stall without data corruption."""
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    rng = random.Random(0xBACE)
+    a = random_matrix(M, K, DATA_W, rng)
+    b = random_matrix(K, N, DATA_W, rng)
+
+    await write_matrix(apb, OFF_A, list(a.flatten()))
+    await write_matrix(apb, OFF_B, list(b.flatten()))
+
+    # Trigger streaming.
+    dut.mat_start.value = 1
+    dut.sys_ready.value = 0  # start with backpressure
+    await RisingEdge(dut.clk)
+    dut.mat_start.value = 0
+
+    # Collect K beats with random backpressure.
+    captured = []
+    bp_rng = random.Random(0xBEEE)
+    cycles = 0
+    while len(captured) < K:
+        cycles += 1
+        assert cycles < 300, "stream timeout under backpressure"
+
+        # Randomly toggle backpressure: ~30 % of cycles stalled.
+        dut.sys_ready.value = bp_rng.choices([0, 1], weights=[3, 7])[0]
+        await Timer(1, unit="ns")
+        if int(dut.mat_valid.value) and int(dut.sys_ready.value):
+            a_bus = int(dut.a_col.value)
+            b_bus = int(dut.b_row.value)
+            a_vec = [lane(a_bus, i, DATA_W) for i in range(M)]
+            b_vec = [lane(b_bus, j, DATA_W) for j in range(N)]
+            captured.append((a_vec, b_vec))
+        await RisingEdge(dut.clk)
+
+    dut.sys_ready.value = 0
+
+    # Compare all K beats.
+    for k, (a_vec, b_vec) in enumerate(captured):
+        for i in range(M):
+            assert a_vec[i] == int(a[i, k]), (
+                f"backpressure: a beat {k} lane {i}: dut={a_vec[i]} ref={a[i, k]}"
+            )
+        for j in range(N):
+            assert b_vec[j] == int(b[k, j]), (
+                f"backpressure: b beat {k} lane {j}: dut={b_vec[j]} ref={b[k, j]}"
+            )
