@@ -16,24 +16,27 @@
 # even when the accumulated dot product overflows 32 bits.
 #
 # Usage:
-#   python3 sim/common/c_code/gen_accel_data.py [--seed N]
-# Regenerate the header whenever the array dimensions or data width change.
+#   python3 sim/common/c_code/gen_accel_data.py [--variant int8_16x16] [--seed N]
+# Regenerate the header whenever the accelerator build variant changes.
 # -----------------------------------------------------------------------------
 import argparse
 from pathlib import Path
 
 import numpy as np
 
-# Accelerator build parameters (must match accelerator_top: M=N=K=16, DATA_W=8,
-# ACC_W=32). DATA_W is the INT8 baseline; regenerate this header if the hardware
-# is rebuilt at a different DATA_W (e.g. +define+ACCEL_DATA_W=16).
-ACC_M = 16
-ACC_N = 16
-ACC_K = 16
-ACC_DATA_W = 8
-ACC_ACC_W = 32
+from accel_config import DEFAULT_VARIANT, get_variant
 
 DEFAULT_SEED = 0xACCE
+DEFAULT_CASE = "random"
+CASES = (
+    "random",
+    "zero",
+    "identity",
+    "checkerboard",
+    "maxpos",
+    "minneg",
+    "minmax",
+)
 # This file lives at sim/common/c_code/gen_accel_data.py, so the repo root is
 # four parents up; the generated header lands in the Didactic-SoC submodule.
 OUT_PATH = (
@@ -61,35 +64,107 @@ def fmt_rows(flat: np.ndarray, cols: int, indent: str = "    ") -> str:
     return "\n".join(lines)
 
 
+def make_matrices(
+    cfg, rng: np.random.Generator, case: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Generate A/B matrices for a named deterministic test case."""
+    lo = -(1 << (cfg.data_w - 1))
+    hi = 1 << (cfg.data_w - 1)  # exclusive upper bound -> max = hi - 1
+    max_val = hi - 1
+
+    if case == "random":
+        a = rng.integers(lo, hi, size=(cfg.m, cfg.k), dtype=np.int64)
+        b = rng.integers(lo, hi, size=(cfg.k, cfg.n), dtype=np.int64)
+    elif case == "zero":
+        a = np.zeros((cfg.m, cfg.k), dtype=np.int64)
+        b = np.zeros((cfg.k, cfg.n), dtype=np.int64)
+    elif case == "identity":
+        a = np.zeros((cfg.m, cfg.k), dtype=np.int64)
+        b = rng.integers(lo, hi, size=(cfg.k, cfg.n), dtype=np.int64)
+        for idx in range(min(cfg.m, cfg.k)):
+            a[idx, idx] = 1
+    elif case == "checkerboard":
+        a = np.fromfunction(
+            lambda row, col: np.where(((row + col) % 2) == 0, max_val, lo),
+            (cfg.m, cfg.k),
+            dtype=int,
+        ).astype(np.int64)
+        b = np.fromfunction(
+            lambda row, col: np.where(((row + col) % 2) == 0, lo, max_val),
+            (cfg.k, cfg.n),
+            dtype=int,
+        ).astype(np.int64)
+    elif case == "maxpos":
+        a = np.full((cfg.m, cfg.k), max_val, dtype=np.int64)
+        b = np.full((cfg.k, cfg.n), max_val, dtype=np.int64)
+    elif case == "minneg":
+        a = np.full((cfg.m, cfg.k), lo, dtype=np.int64)
+        b = np.full((cfg.k, cfg.n), lo, dtype=np.int64)
+    elif case == "minmax":
+        a = np.fromfunction(
+            lambda row, col: np.where((col % 2) == 0, lo, max_val),
+            (cfg.m, cfg.k),
+            dtype=int,
+        ).astype(np.int64)
+        b = np.fromfunction(
+            lambda row, col: np.where((row % 2) == 0, max_val, lo),
+            (cfg.k, cfg.n),
+            dtype=int,
+        ).astype(np.int64)
+    else:
+        raise ValueError(f"unknown test case '{case}'")
+
+    return a, b
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--variant",
+        default=DEFAULT_VARIANT,
+        help=f"accelerator build variant (default: {DEFAULT_VARIANT})",
+    )
     ap.add_argument(
         "--seed",
         type=lambda s: int(s, 0),
         default=DEFAULT_SEED,
         help=f"PRNG seed (default 0x{DEFAULT_SEED:X})",
     )
+    ap.add_argument(
+        "--case",
+        choices=CASES,
+        default=DEFAULT_CASE,
+        help=f"matrix pattern to generate (default: {DEFAULT_CASE})",
+    )
+    ap.add_argument(
+        "--list-cases",
+        action="store_true",
+        help="list supported matrix patterns and exit",
+    )
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=OUT_PATH,
+        help=f"output header path (default: {OUT_PATH})",
+    )
     args = ap.parse_args()
 
-    rng = np.random.default_rng(args.seed)
-    lo = -(1 << (ACC_DATA_W - 1))
-    hi = 1 << (ACC_DATA_W - 1)  # exclusive upper bound -> max = hi - 1
+    if args.list_cases:
+        for case in CASES:
+            print(case)
+        return 0
 
-    # Random signed DATA_W-bit operands. int64 keeps the matmul exact before the
-    # explicit 32-bit wrap below.
-    a = rng.integers(lo, hi, size=(ACC_M, ACC_K), dtype=np.int64)
-    b = rng.integers(lo, hi, size=(ACC_K, ACC_N), dtype=np.int64)
+    cfg = get_variant(args.variant)
+
+    rng = np.random.default_rng(args.seed)
+    a, b = make_matrices(cfg, rng, args.case)
 
     # Golden product with the same two's-complement 32-bit wrap as the RTL MAC.
-    c = wrap_signed(a @ b, ACC_ACC_W)
+    c = wrap_signed(a @ b, cfg.acc_w)
 
     a_flat = a.reshape(-1)  # row-major A[i*K + k]
     b_flat = b.reshape(-1)  # row-major B[k*N + j]
     c_flat = c.reshape(-1)  # row-major C[i*N + j]
-
-    # A/B element C type tracks the input width (8 -> int8_t, 16 -> int16_t,
-    # 32 -> int32_t). The golden accumulator stays int32_t (ACC_W = 32).
-    elem_ctype = {8: "int8_t", 16: "int16_t", 32: "int32_t"}[ACC_DATA_W]
 
     header = f"""\
 #ifndef __ACCEL_GEMM_DATA_H__
@@ -98,10 +173,11 @@ def main() -> int:
 #include <stdint.h>
 
 /*
- * Auto-generated by sim/common/c_code/gen_accel_data.py (seed 0x{args.seed:X}).
+ * Auto-generated by sim/common/c_code/gen_accel_data.py
+ * Variant: {cfg.name}, case: {args.case} (seed 0x{args.seed:X}).
  * Do not edit by hand; rerun the generator instead.
  *
- * Random signed {ACC_DATA_W}-bit GEMM test vectors for the systolic-array
+ * Random signed {cfg.data_w}-bit GEMM test vectors for the systolic-array
  * accelerator.  The golden matrix is C = A * B with
  *   C[i][j] = sum_k A[i][k] * B[k][j]
  * accumulated in 32-bit two's-complement arithmetic (wraps, no saturation),
@@ -113,28 +189,35 @@ def main() -> int:
  *   C[i][j] -> accel_golden[i * ACC_N + j]
  */
 
-#define ACC_M {ACC_M}
-#define ACC_N {ACC_N}
-#define ACC_K {ACC_K}
-#define ACC_DATA_W {ACC_DATA_W}
+#define ACC_VARIANT "{cfg.name}"
+#define ACC_M {cfg.m}
+#define ACC_N {cfg.n}
+#define ACC_K {cfg.k}
+#define ACC_DATA_W {cfg.data_w}
+#define ACC_ACC_W {cfg.acc_w}
 
-static const {elem_ctype} accel_A[ACC_M * ACC_K] = {{
-{fmt_rows(a_flat, ACC_K)}
+static const {cfg.elem_ctype} accel_A[ACC_M * ACC_K] = {{
+{fmt_rows(a_flat, cfg.k)}
 }};
 
-static const {elem_ctype} accel_B[ACC_K * ACC_N] = {{
-{fmt_rows(b_flat, ACC_N)}
+static const {cfg.elem_ctype} accel_B[ACC_K * ACC_N] = {{
+{fmt_rows(b_flat, cfg.n)}
 }};
 
-static const int32_t accel_golden[ACC_M * ACC_N] = {{
-{fmt_rows(c_flat, ACC_N)}
+static const {cfg.golden_ctype} accel_golden[ACC_M * ACC_N] = {{
+{fmt_rows(c_flat, cfg.n)}
 }};
 
 #endif /* __ACCEL_GEMM_DATA_H__ */
 """
 
-    OUT_PATH.write_text(header)
-    print(f"wrote {OUT_PATH} (seed 0x{args.seed:X}, {ACC_M}x{ACC_N}x{ACC_K})")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(header)
+    print(
+        f"wrote {args.out} "
+        f"(variant {cfg.name}, case {args.case}, seed 0x{args.seed:X}, "
+        f"{cfg.m}x{cfg.n}x{cfg.k}, DATA_W={cfg.data_w})"
+    )
     return 0
 
 

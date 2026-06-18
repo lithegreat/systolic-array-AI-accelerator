@@ -15,7 +15,8 @@
 [systolic array](systolic_array_if.md), and the
 [Matrix C buffer](matrix_buffer_c_if.md) behind a single APB port. It implements no
 storage or compute itself — it only decodes APB accesses to the correct sub-block
-and connects the internal compute path.
+and connects the internal compute path. It also derives simple top-level
+performance event pulses for the control unit's counters.
 
 ## Block diagram
 
@@ -142,6 +143,8 @@ Quick read:
 | `out_valid` | `systolic_array` | `matrix_buffer_c` (`c_in_valid`) | Valid C output row. |
 | `out_ready` | tied `1'b1` | `systolic_array` | Capture buffer is always ready in v1. |
 | `c_row_data`, `c_row` | `systolic_array` | `matrix_buffer_c` (`c_row_data_in`, `c_row_in`) | Captured C row (N accumulators) and its row index. |
+| `perf_apb_write`, `perf_apb_read` | `accelerator_top` | `control_unit` | Completed top-level APB transaction counters. |
+| `perf_input_stall`, `perf_output_stall` | `accelerator_top` | `control_unit` | Streaming stall event inputs for performance counters. |
 
 ## Behavior
 

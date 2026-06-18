@@ -133,23 +133,27 @@ server with the accelerator integrated into the SoC. Results:
   ~103%.) To generate a bitstream, reduce the array dimensions (e.g. 8x8), force
   the multiplies onto the idle DSPs (a `use_dsp` attribute on the MAC product),
   or target a larger device.
-- **Selecting the array size at synthesis (`ACCEL_DIM`)**: the physical array
-  dimension (M=N=K) is set with the `ACCEL_DIM` make/Verilog define, defaulting
-  to 16. Build an 8x8 bitstream that fits the PYNQ-Z1 with:
+- **Selecting the accelerator variant at synthesis (`ACCEL_VARIANT`)**: the
+  physical array dimension and datapath width are selected from the named
+  variants in `sim/common/c_code/accel_config.py`, defaulting to `int8_16x16`.
+  Build an 8x8 bitstream that fits the PYNQ-Z1 with:
 
   ```bash
   cd Didactic-SoC/fpga
-  make all_xilinx ACCEL_DIM=8
+  make all_xilinx ACCEL_VARIANT=int8_8x8
   ```
 
-  Verified result for `ACCEL_DIM=8` (INT8 baseline): synthesis, place + route,
-  and `write_bitstream` all complete, producing
+  Direct overrides remain available for experiments, e.g.
+  `make all_xilinx ACCEL_DIM=8 ACCEL_DATA_W=8`.
+
+  Verified result for the `int8_8x8` build (`ACCEL_DIM=8`, `ACCEL_DATA_W=8`):
+  synthesis, place + route, and `write_bitstream` all complete, producing
   `build/fpga/z1/didactic-z1.runs/impl_1/DidacticZ1.bit` (+`.bin`).
   Post-implementation utilization ≈ 28.9k/53200 LUTs (54%), 14.9k FFs (14%),
   1/220 DSPs, 0 BRAM; DRC 0 errors. Timing shows a small `-0.014 ns` violation
   on the JTAG clock path (`td_o_reg → jtag_tdo`) — a board I/O path independent of
-  the accelerator datapath and the chosen `ACCEL_DIM`/`DATA_W`. Runtime matrix
-  dimensions written via the APB regmap must stay <= the chosen `ACCEL_DIM`.
+  the accelerator datapath and the chosen variant. Runtime matrix dimensions
+  written via the APB regmap must stay <= the chosen physical array dimension.
 
 > Note: `Didactic-SoC/fpga/scripts/run_xilinx.tcl` hardcodes the synthesis
 > include paths (like the sim Makefile). The accelerator's `rtl/include` was

@@ -6,6 +6,7 @@
 // file implements:
 //   * APB subordinate FSM (SETUP / ACCESS, zero-wait).
 //   * Register file (CTRL / STATUS / M_DIM / N_DIM / K_DIM / INT_EN / INT_STAT).
+//   * Build/status registers and lightweight performance counters.
 //   * Compute FSM: IDLE -> ISSUE -> BUSY -> DONE.
 //   * Soft-reset bit and done-interrupt.
 //
@@ -18,6 +19,10 @@
 module control_unit
     import accel_pkg::*;
 #(
+    parameter int unsigned DATA_W    = DEF_DATA_W,
+    parameter int unsigned M         = DEF_M,
+    parameter int unsigned N         = DEF_N,
+    parameter int unsigned K         = DEF_K,
     parameter int unsigned APB_AW    = 10,
     parameter int unsigned APB_DW    = 32
 ) (
@@ -43,7 +48,21 @@ module control_unit
     // Systolic array control
     output logic                     array_start,
     output logic                     array_clear,
-    input  logic                     array_done
+    input  logic                     array_done,
+
+    // Runtime tile dimensions (clamped to the physical build dimensions).
+    output logic [APB_DW-1:0]        cfg_m_dim,
+    output logic [APB_DW-1:0]        cfg_n_dim,
+    output logic [APB_DW-1:0]        cfg_k_dim,
+    output logic [APB_DW-1:0]        run_m_dim,
+    output logic [APB_DW-1:0]        run_n_dim,
+    output logic [APB_DW-1:0]        run_k_dim,
+
+    // Performance event inputs from accelerator_top
+    input  logic                     perf_apb_write,
+    input  logic                     perf_apb_read,
+    input  logic                     perf_input_stall,
+    input  logic                     perf_output_stall
 );
 
     // -------------------------------------------------------------------------
@@ -62,8 +81,20 @@ module control_unit
     logic [APB_DW-1:0] reg_m_dim;
     logic [APB_DW-1:0] reg_n_dim;
     logic [APB_DW-1:0] reg_k_dim;
+    logic [APB_DW-1:0] latched_m_dim;
+    logic [APB_DW-1:0] latched_n_dim;
+    logic [APB_DW-1:0] latched_k_dim;
     logic [APB_DW-1:0] reg_int_en;
     logic [APB_DW-1:0] reg_int_stat;
+    logic [APB_DW-1:0] perf_cycles;
+    logic [APB_DW-1:0] perf_apb_writes;
+    logic [APB_DW-1:0] perf_apb_reads;
+    logic [APB_DW-1:0] perf_in_stalls;
+    logic [APB_DW-1:0] perf_out_stalls;
+    logic              perf_active;
+    logic              perf_in_stall_seen;
+    logic              perf_out_stall_seen;
+    logic              perf_counter_overflow;
 
     // -------------------------------------------------------------------------
     // APB transaction qualification
@@ -75,6 +106,23 @@ module control_unit
 
     logic apb_write_strobe;
     assign apb_write_strobe = apb_access && PWRITE;
+
+    function automatic logic [APB_DW-1:0] clamp_dim(
+        input logic [APB_DW-1:0] value,
+        input int unsigned max_value
+    );
+        logic [APB_DW-1:0] max_word;
+        begin
+            max_word = APB_DW'(max_value);
+            if (value == '0) begin
+                clamp_dim = APB_DW'(1);
+            end else if (value > max_word) begin
+                clamp_dim = max_word;
+            end else begin
+                clamp_dim = value;
+            end
+        end
+    endfunction
 
     // -------------------------------------------------------------------------
     // Compute FSM
@@ -112,16 +160,55 @@ module control_unit
     assign start_pulse  = ctrl_start_w && (cstate_q == C_IDLE);
 
     assign done_event = array_done;
+    assign cfg_m_dim  = reg_m_dim;
+    assign cfg_n_dim  = reg_n_dim;
+    assign cfg_k_dim  = reg_k_dim;
+    assign run_m_dim  = latched_m_dim;
+    assign run_n_dim  = latched_n_dim;
+    assign run_k_dim  = latched_k_dim;
+
+    logic perf_clear_w;
+    assign perf_clear_w = apb_write_strobe && (reg_off == REG_PERF_CTRL[7:0]) && PWDATA[PERF_CLEAR_BIT];
+
+    logic [APB_DW-1:0] build_info;
+    logic [APB_DW-1:0] hw_status;
+
+    always_comb begin
+        build_info = '0;
+        build_info[7:0]   = 8'(M);
+        build_info[15:8]  = 8'(N);
+        build_info[23:16] = 8'(K);
+        build_info[31:24] = 8'(DATA_W);
+
+        hw_status = '0;
+        hw_status[HW_STATUS_PERF_ACTIVE_BIT]      = perf_active;
+        hw_status[HW_STATUS_IN_STALL_SEEN_BIT]    = perf_in_stall_seen;
+        hw_status[HW_STATUS_OUT_STALL_SEEN_BIT]   = perf_out_stall_seen;
+        hw_status[HW_STATUS_COUNTER_OVERFLOW_BIT] = perf_counter_overflow;
+        hw_status[HW_STATUS_FSM_STATE_LSB +: 2]   = cstate_q;
+    end
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             reg_ctrl     <= '0;
             reg_status   <= '0;
-            reg_m_dim    <= APB_DW'(DEF_M);
-            reg_n_dim    <= APB_DW'(DEF_N);
-            reg_k_dim    <= APB_DW'(DEF_K);
+            reg_m_dim    <= APB_DW'(M);
+            reg_n_dim    <= APB_DW'(N);
+            reg_k_dim    <= APB_DW'(K);
+            latched_m_dim <= APB_DW'(M);
+            latched_n_dim <= APB_DW'(N);
+            latched_k_dim <= APB_DW'(K);
             reg_int_en   <= '0;
             reg_int_stat <= '0;
+            perf_cycles           <= '0;
+            perf_apb_writes       <= '0;
+            perf_apb_reads        <= '0;
+            perf_in_stalls        <= '0;
+            perf_out_stalls       <= '0;
+            perf_active           <= 1'b0;
+            perf_in_stall_seen    <= 1'b0;
+            perf_out_stall_seen   <= 1'b0;
+            perf_counter_overflow <= 1'b0;
             cstate_q     <= C_IDLE;
         end else begin
             cstate_q <= cstate_d;
@@ -139,6 +226,7 @@ module control_unit
                 reg_status                 <= '0;
                 reg_int_stat               <= '0;
                 reg_ctrl[CTRL_SOFTRST_BIT] <= 1'b0;
+                perf_active                 <= 1'b0;
             end
 
             // STATUS register.
@@ -148,10 +236,19 @@ module control_unit
             else if (apb_write_strobe && reg_off == REG_STATUS[7:0] && PWDATA[STATUS_DONE_BIT])
                 reg_status[STATUS_DONE_BIT] <= 1'b0;
 
-            // Dim regs.
-            if (apb_write_strobe && reg_off == REG_M_DIM[7:0]) reg_m_dim <= PWDATA;
-            if (apb_write_strobe && reg_off == REG_N_DIM[7:0]) reg_n_dim <= PWDATA;
-            if (apb_write_strobe && reg_off == REG_K_DIM[7:0]) reg_k_dim <= PWDATA;
+            // Runtime dimension registers. Writes are accepted only while idle;
+            // this keeps an in-flight tile's compact layout stable.
+            if (cstate_q == C_IDLE) begin
+                if (apb_write_strobe && reg_off == REG_M_DIM[7:0]) begin
+                    reg_m_dim <= clamp_dim(PWDATA, M);
+                end
+                if (apb_write_strobe && reg_off == REG_N_DIM[7:0]) begin
+                    reg_n_dim <= clamp_dim(PWDATA, N);
+                end
+                if (apb_write_strobe && reg_off == REG_K_DIM[7:0]) begin
+                    reg_k_dim <= clamp_dim(PWDATA, K);
+                end
+            end
 
             // INT_EN: simple R/W.
             if (apb_write_strobe && reg_off == REG_INT_EN[7:0]) reg_int_en <= PWDATA;
@@ -160,6 +257,73 @@ module control_unit
             if (cstate_q == C_DONE) reg_int_stat[INT_DONE_BIT] <= 1'b1;
             else if (apb_write_strobe && reg_off == REG_INT_STAT[7:0] && PWDATA[INT_DONE_BIT])
                 reg_int_stat[INT_DONE_BIT] <= 1'b0;
+
+            if (perf_clear_w) begin
+                perf_cycles           <= '0;
+                perf_apb_writes       <= '0;
+                perf_apb_reads        <= '0;
+                perf_in_stalls        <= '0;
+                perf_out_stalls       <= '0;
+                perf_active           <= 1'b0;
+                perf_in_stall_seen    <= 1'b0;
+                perf_out_stall_seen   <= 1'b0;
+                perf_counter_overflow <= 1'b0;
+            end else begin
+                if (start_pulse) begin
+                    perf_cycles         <= '0;
+                    perf_in_stalls      <= '0;
+                    perf_out_stalls     <= '0;
+                    perf_active         <= 1'b1;
+                    perf_in_stall_seen  <= 1'b0;
+                    perf_out_stall_seen <= 1'b0;
+                    latched_m_dim       <= reg_m_dim;
+                    latched_n_dim       <= reg_n_dim;
+                    latched_k_dim       <= reg_k_dim;
+                end else if (done_event) begin
+                    perf_active <= 1'b0;
+                end
+
+                if (perf_apb_write) begin
+                    if (&perf_apb_writes) begin
+                        perf_counter_overflow <= 1'b1;
+                    end else begin
+                        perf_apb_writes <= perf_apb_writes + 1'b1;
+                    end
+                end
+                if (perf_apb_read) begin
+                    if (&perf_apb_reads) begin
+                        perf_counter_overflow <= 1'b1;
+                    end else begin
+                        perf_apb_reads <= perf_apb_reads + 1'b1;
+                    end
+                end
+
+                if (perf_active) begin
+                    if (&perf_cycles) begin
+                        perf_counter_overflow <= 1'b1;
+                    end else begin
+                        perf_cycles <= perf_cycles + 1'b1;
+                    end
+
+                    if (perf_input_stall) begin
+                        perf_in_stall_seen <= 1'b1;
+                        if (&perf_in_stalls) begin
+                            perf_counter_overflow <= 1'b1;
+                        end else begin
+                            perf_in_stalls <= perf_in_stalls + 1'b1;
+                        end
+                    end
+
+                    if (perf_output_stall) begin
+                        perf_out_stall_seen <= 1'b1;
+                        if (&perf_out_stalls) begin
+                            perf_counter_overflow <= 1'b1;
+                        end else begin
+                            perf_out_stalls <= perf_out_stalls + 1'b1;
+                        end
+                    end
+                end
+            end
         end
     end
 
@@ -177,6 +341,14 @@ module control_unit
                 REG_K_DIM[7:0]:    PRDATA = reg_k_dim;
                 REG_INT_EN[7:0]:   PRDATA = reg_int_en;
                 REG_INT_STAT[7:0]: PRDATA = reg_int_stat;
+                REG_BUILD_INFO[7:0]:      PRDATA = build_info;
+                REG_HW_STATUS[7:0]:       PRDATA = hw_status;
+                REG_PERF_CTRL[7:0]:       PRDATA = '0;
+                REG_PERF_CYCLES[7:0]:     PRDATA = perf_cycles;
+                REG_PERF_APB_WRITES[7:0]: PRDATA = perf_apb_writes;
+                REG_PERF_APB_READS[7:0]:  PRDATA = perf_apb_reads;
+                REG_PERF_IN_STALLS[7:0]:  PRDATA = perf_in_stalls;
+                REG_PERF_OUT_STALLS[7:0]: PRDATA = perf_out_stalls;
                 default:           PRDATA = '0;
             endcase
         end

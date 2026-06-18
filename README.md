@@ -89,9 +89,11 @@ SoC, no Ibex, no RISC-V program. Builds `accelerator_top` and prints `PASS`/`FAI
 
 ```bash
 source .venv/bin/activate
-./sim/scripts/run_verilator.sh             # 16x16 array (default)
-./sim/scripts/run_verilator.sh --dim 8     # 8x8 array (matches the PYNQ-Z1 bitstream)
-./sim/scripts/run_verilator.sh --trace     # also dump waves to sim/waves/
+./sim/scripts/run_verilator.sh                         # int8_16x16 default
+./sim/scripts/run_verilator.sh --variant int8_8x8      # PYNQ-Z1-friendly variant
+./sim/scripts/run_verilator.sh --dim 8                 # legacy shorthand for 8x8
+./sim/scripts/run_verilator.sh --list-variants         # show supported variants
+./sim/scripts/run_verilator.sh --trace                 # also dump waves to sim/waves/
 ```
 
 Expected: `All 256 C elements == 16, PASS` (or `All 64 C elements == 8, PASS`
@@ -141,7 +143,8 @@ make verilate_accel
 ```
 
 **PASS** = the firmware writes `accel_result == 0xACCE5500`. Test vectors are
-regenerable with `python3 sim/common/c_code/gen_accel_data.py`. Details and the
+regenerable with `python3 sim/common/c_code/gen_accel_data.py --variant int8_16x16`.
+Details and the
 QuestaSim bring-up notes are in
 [docs/verification/accelerator_soc_report.md](docs/verification/accelerator_soc_report.md).
 
@@ -200,7 +203,7 @@ cd Didactic-SoC/fpga/sw && make env && make test TESTCASE=accel   # -> build/fpg
 
 # 2. Synthesize + implement + bitstream (8x8 fits the PYNQ-Z1; default 16 overflows it)
 module load xilinx/vivado/2024.1
-cd Didactic-SoC/fpga && make all_xilinx ACCEL_DIM=8
+cd Didactic-SoC/fpga && make all_xilinx ACCEL_VARIANT=int8_8x8
 ```
 
 ```bash
@@ -236,8 +239,9 @@ Full directory conventions: [docs/README.md](docs/README.md).
 
 ## Architecture at a glance
 
-GEMM accelerator (`C = A·B`, output-stationary, default `M=N=K=16`, 16-bit
-signed, 32-bit accumulate). The RISC-V core configures and feeds it over APB:
+GEMM accelerator (`C = A·B`, output-stationary, default variant `int8_16x16`:
+`M=N=K=16`, 8-bit signed inputs, 32-bit accumulate). The RISC-V core configures
+and feeds it over APB:
 
 ```mermaid
 flowchart TB
