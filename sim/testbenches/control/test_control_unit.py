@@ -345,3 +345,116 @@ async def test_perf_and_status_registers(dut) -> None:
     assert not (hw_status & HW_STATUS_COUNTER_OVERFLOW), (
         "overflow sticky bit should be clear"
     )
+
+
+@cocotb.test()
+async def test_start_while_busy(dut) -> None:
+    """Writing CTRL.start while the FSM is in C_BUSY must be ignored."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    # Kick off a first compute.
+    await apb.write(REG_CTRL, CTRL_START)
+
+    # Wait a couple of cycles so the FSM leaves C_ISSUE and enters C_BUSY.
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+
+    status = await apb.read(REG_STATUS)
+    assert status & STATUS_BUSY, f"expected BUSY, got 0x{status:x}"
+
+    # Try to issue a *second* start while still BUSY — it should be ignored.
+    await apb.write(REG_CTRL, CTRL_START)
+
+    # Complete the first compute via array_done.
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+
+    # The FSM should land in DONE exactly once (not start a second compute).
+    status = await apb.read(REG_STATUS)
+    assert status & STATUS_DONE, f"expected DONE after first compute, got 0x{status:x}"
+    assert not (status & STATUS_BUSY), f"BUSY should be clear, got 0x{status:x}"
+
+
+@cocotb.test()
+async def test_irq_masked_when_disabled(dut) -> None:
+    """irq_4 must stay low when INT_EN[0]=0 or irq_en_4=0, even after done."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    # --- Case 1: INT_EN disabled, irq_en_4 enabled ---
+    dut.irq_en_4.value = 1
+    await apb.write(REG_INT_EN, 0x0)  # done-interrupt enable OFF
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+
+    assert int(dut.irq_4.value) == 0, "irq_4 should be 0 when INT_EN[0]=0"
+
+    # --- Case 2: INT_EN enabled, irq_en_4 disabled ---
+    # Soft-reset to get back to IDLE cleanly.
+    await apb.write(REG_CTRL, CTRL_SOFTRST)
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+
+    dut.irq_en_4.value = 0
+    await apb.write(REG_INT_EN, 0x1)  # done-interrupt enable ON
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+
+    assert int(dut.irq_4.value) == 0, "irq_4 should be 0 when irq_en_4=0"
+
+
+@cocotb.test()
+async def test_back_to_back_compute(dut) -> None:
+    """Two consecutive start→done cycles must both complete correctly."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    for iteration in range(2):
+        # Clear any leftover DONE status from the previous iteration.
+        await apb.write(REG_STATUS, STATUS_DONE)
+
+        await apb.write(REG_CTRL, CTRL_START)
+        # Wait for array_start.
+        for _ in range(5):
+            await RisingEdge(dut.clk_in)
+
+        status = await apb.read(REG_STATUS)
+        assert status & STATUS_BUSY, (
+            f"iter {iteration}: expected BUSY, got 0x{status:x}"
+        )
+
+        # Signal completion.
+        dut.array_done.value = 1
+        await RisingEdge(dut.clk_in)
+        dut.array_done.value = 0
+        for _ in range(5):
+            await RisingEdge(dut.clk_in)
+
+        status = await apb.read(REG_STATUS)
+        assert status & STATUS_DONE, (
+            f"iter {iteration}: expected DONE, got 0x{status:x}"
+        )
+        assert not (status & STATUS_BUSY), (
+            f"iter {iteration}: BUSY should be clear, got 0x{status:x}"
+        )
