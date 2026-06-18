@@ -6,6 +6,7 @@ import os
 import random
 
 import cocotb
+import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
@@ -33,6 +34,9 @@ async def reset_dut(dut) -> None:
     dut.PWDATA.value = 0
     dut.mat_start.value = 0
     dut.sys_ready.value = 0
+    dut.cfg_m_dim.value = M
+    dut.cfg_n_dim.value = N
+    dut.cfg_k_dim.value = K
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -42,6 +46,24 @@ async def reset_dut(dut) -> None:
 async def write_matrix(apb: ApbMaster, base: int, flat) -> None:
     for word in pack_words(flat, DATA_W, APB_DW):
         await apb.write(base, word)
+
+
+async def apb_write_sample_error(dut, addr: int, data: int) -> tuple[int, int]:
+    dut.PADDR.value = int(addr)
+    dut.PWDATA.value = int(data) & 0xFFFFFFFF
+    dut.PWRITE.value = 1
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    ready = int(dut.PREADY.value)
+    err = int(dut.PSLVERR.value)
+    await RisingEdge(dut.clk)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+    dut.PWRITE.value = 0
+    return ready, err
 
 
 def lane(bits: int, idx: int, width: int) -> int:
@@ -154,6 +176,30 @@ async def test_ctrl_read_full_flags(dut) -> None:
     assert ctrl_val & 0x2, f"A-full flag (bit 1) should be set, got 0x{ctrl_val:x}"
     assert ctrl_val & 0x4, f"B-full flag (bit 2) should be set, got 0x{ctrl_val:x}"
 
+    await apb.write(OFF_CTRL, 0x1)
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert not (ctrl_val & 0x6), (
+        f"full flags should clear after pointer reset, got 0x{ctrl_val:x}"
+    )
+
+
+@cocotb.test()
+async def test_write_overrun_sets_pslverr(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    await write_matrix(apb, OFF_A, [1] * (M * K))
+    ready, err = await apb_write_sample_error(dut, OFF_A, 0)
+    assert ready == 1, "overrun write should still complete"
+    assert err == 1, "A overrun write should raise PSLVERR"
+
+    await apb.write(OFF_CTRL, 0x1)
+    await write_matrix(apb, OFF_B, [1] * (K * N))
+    ready, err = await apb_write_sample_error(dut, OFF_B, 0)
+    assert ready == 1, "overrun write should still complete"
+    assert err == 1, "B overrun write should raise PSLVERR"
+
 
 @cocotb.test()
 async def test_overwrite_a_past_full(dut) -> None:
@@ -220,6 +266,43 @@ async def test_overwrite_b_past_full(dut) -> None:
 
 
 @cocotb.test()
+async def test_stream_holds_under_backpressure(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    a = np.arange(M * K, dtype=np.int64).reshape(M, K) % (1 << (DATA_W - 1))
+    b = (np.arange(K * N, dtype=np.int64).reshape(K, N) + 1) % (1 << (DATA_W - 1))
+    await write_matrix(apb, OFF_A, list(a.flatten()))
+    await write_matrix(apb, OFF_B, list(b.flatten()))
+
+    dut.sys_ready.value = 0
+    dut.mat_start.value = 1
+    await RisingEdge(dut.clk)
+    dut.mat_start.value = 0
+
+    await Timer(1, unit="ns")
+    assert int(dut.mat_valid.value) == 1, (
+        "mat_valid should assert even while back-pressured"
+    )
+    first_a = int(dut.a_col.value)
+    first_b = int(dut.b_row.value)
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+        await Timer(1, unit="ns")
+        assert int(dut.a_col.value) == first_a, "A beat changed while sys_ready=0"
+        assert int(dut.b_row.value) == first_b, "B beat changed while sys_ready=0"
+
+    dut.sys_ready.value = 1
+    await RisingEdge(dut.clk)
+    await Timer(1, unit="ns")
+    for i in range(M):
+        assert lane(first_a, i, DATA_W) == int(a[i, 0])
+    for j in range(N):
+        assert lane(first_b, j, DATA_W) == int(b[0, j])
+
+
+@cocotb.test()
 async def test_backpressure_stalls_stream(dut) -> None:
     """Toggling sys_ready low mid-stream must stall without data corruption."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
@@ -270,3 +353,52 @@ async def test_backpressure_stalls_stream(dut) -> None:
             assert b_vec[j] == int(b[k, j]), (
                 f"backpressure: b beat {k} lane {j}: dut={b_vec[j]} ref={b[k, j]}"
             )
+
+
+@cocotb.test()
+async def test_runtime_compact_tile_stream(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    runtime_m = min(5, M)
+    runtime_n = min(7, N)
+    runtime_k = min(3, K)
+    dut.cfg_m_dim.value = runtime_m
+    dut.cfg_n_dim.value = runtime_n
+    dut.cfg_k_dim.value = runtime_k
+
+    a = np.arange(runtime_m * runtime_k, dtype=np.int64).reshape(runtime_m, runtime_k)
+    b = (
+        np.arange(runtime_k * runtime_n, dtype=np.int64).reshape(runtime_k, runtime_n)
+        + 1
+    )
+    a %= 1 << (DATA_W - 1)
+    b %= 1 << (DATA_W - 1)
+
+    await write_matrix(apb, OFF_A, list(a.flatten()))
+    await write_matrix(apb, OFF_B, list(b.flatten()))
+
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"runtime A-full should be set, got 0x{ctrl_val:x}"
+    assert ctrl_val & 0x4, f"runtime B-full should be set, got 0x{ctrl_val:x}"
+
+    dut.sys_ready.value = 1
+    dut.mat_start.value = 1
+    await RisingEdge(dut.clk)
+    dut.mat_start.value = 0
+
+    captured = []
+    while len(captured) < runtime_k:
+        await Timer(1, unit="ns")
+        if int(dut.mat_valid.value) and int(dut.sys_ready.value):
+            captured.append((int(dut.a_col.value), int(dut.b_row.value)))
+        await RisingEdge(dut.clk)
+
+    for k_idx, (a_bus, b_bus) in enumerate(captured):
+        for row in range(M):
+            expected = int(a[row, k_idx]) if row < runtime_m else 0
+            assert lane(a_bus, row, DATA_W) == expected
+        for col in range(N):
+            expected = int(b[k_idx, col]) if col < runtime_n else 0
+            assert lane(b_bus, col, DATA_W) == expected

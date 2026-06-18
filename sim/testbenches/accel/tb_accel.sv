@@ -55,8 +55,20 @@ module tb_accel;
     localparam logic [APB_AW-1:0] ADDR_M_DIM  = 10'h108;
     localparam logic [APB_AW-1:0] ADDR_N_DIM  = 10'h10C;
     localparam logic [APB_AW-1:0] ADDR_K_DIM  = 10'h118;
+    localparam logic [APB_AW-1:0] ADDR_BUILD_INFO      = 10'h11C;
+    localparam logic [APB_AW-1:0] ADDR_HW_STATUS       = 10'h120;
+    localparam logic [APB_AW-1:0] ADDR_PERF_CTRL       = 10'h124;
+    localparam logic [APB_AW-1:0] ADDR_PERF_CYCLES     = 10'h128;
+    localparam logic [APB_AW-1:0] ADDR_PERF_APB_WRITES = 10'h12C;
+    localparam logic [APB_AW-1:0] ADDR_PERF_APB_READS  = 10'h130;
+    localparam logic [APB_AW-1:0] ADDR_PERF_IN_STALLS  = 10'h134;
+    localparam logic [APB_AW-1:0] ADDR_PERF_OUT_STALLS = 10'h138;
     localparam logic [APB_AW-1:0] ADDR_C_DATA = 10'h200; // matrix_buffer_c : DATA
     localparam logic [APB_AW-1:0] ADDR_C_CTL  = 10'h280; // matrix_buffer_c : CTRL
+
+    localparam logic [APB_DW-1:0] EXPECT_BUILD_INFO = {
+        8'(DATA_W), 8'(K), 8'(N), 8'(M)
+    };
 
     // DUT signals.
     logic                  clk;
@@ -144,6 +156,12 @@ module tb_accel;
     integer i;
     integer errors;
     logic [APB_DW-1:0] rdata;
+    logic [APB_DW-1:0] perf_apb_reads;
+    logic [APB_DW-1:0] perf_apb_writes;
+    logic [APB_DW-1:0] perf_cycles;
+    logic [APB_DW-1:0] perf_in_stalls;
+    logic [APB_DW-1:0] perf_out_stalls;
+    logic [APB_DW-1:0] hw_status;
     integer timeout;
 
     initial begin
@@ -184,6 +202,16 @@ module tb_accel;
         apb_write(ADDR_N_DIM, N);
         apb_write(ADDR_K_DIM, K);
 
+        apb_read(ADDR_BUILD_INFO, rdata);
+        if (rdata !== EXPECT_BUILD_INFO) begin
+            $display("[tb_accel] BUILD_INFO = 0x%08x (expected 0x%08x)", rdata, EXPECT_BUILD_INFO);
+            errors = errors + 1;
+        end
+
+        // Clear performance counters after preload/config writes so the counts
+        // describe the compute/readback window.
+        apb_write(ADDR_PERF_CTRL, 32'h0000_0001);
+
         // 6. Issue start pulse (CTRL bit 0).
         apb_write(ADDR_CTRL, 32'h0000_0001);
 
@@ -211,6 +239,39 @@ module tb_accel;
             end
         end
 
+        apb_read(ADDR_PERF_APB_READS, perf_apb_reads);
+        apb_read(ADDR_PERF_APB_WRITES, perf_apb_writes);
+        apb_read(ADDR_PERF_CYCLES, perf_cycles);
+        apb_read(ADDR_PERF_IN_STALLS, perf_in_stalls);
+        apb_read(ADDR_PERF_OUT_STALLS, perf_out_stalls);
+        apb_read(ADDR_HW_STATUS, hw_status);
+
+        if (perf_apb_writes < 1) begin
+            $display("[tb_accel] PERF_APB_WRITES = %0d (expected >= 1)", perf_apb_writes);
+            errors = errors + 1;
+        end
+        if (perf_apb_reads < M*N) begin
+            $display("[tb_accel] PERF_APB_READS = %0d (expected >= %0d)", perf_apb_reads, M*N);
+            errors = errors + 1;
+        end
+        if (perf_cycles == 0) begin
+            $display("[tb_accel] PERF_CYCLES should be nonzero");
+            errors = errors + 1;
+        end
+        if (perf_out_stalls != 0 || hw_status[2]) begin
+            $display("[tb_accel] unexpected output stall count/status: count=%0d status=0x%08x",
+                     perf_out_stalls, hw_status);
+            errors = errors + 1;
+        end
+        if (hw_status[3]) begin
+            $display("[tb_accel] unexpected performance counter overflow: status=0x%08x", hw_status);
+            errors = errors + 1;
+        end
+
+        $display("[tb_accel] perf cycles=%0d apb_writes=%0d apb_reads=%0d in_stalls=%0d out_stalls=%0d status=0x%08x",
+                 perf_cycles, perf_apb_writes, perf_apb_reads, perf_in_stalls, perf_out_stalls,
+                 hw_status);
+
         // 9. Report.
         if (errors == 0) begin
             $display("[tb_accel] All %0d C elements == %0d", M*N, K);
@@ -218,6 +279,7 @@ module tb_accel;
         end else begin
             $display("[tb_accel] %0d / %0d C elements mismatched", errors, M*N);
             $display("[tb_accel] RESULT: FAIL");
+            $fatal(1, "mismatch or performance/status check failure");
         end
 
         repeat (5) @(negedge clk);

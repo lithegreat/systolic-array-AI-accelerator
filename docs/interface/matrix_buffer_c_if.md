@@ -10,10 +10,11 @@
 ## Overview
 
 `matrix_buffer_c` captures the drained outputs of the systolic array and stores
-them row-major for software read-back over APB. The array drains a full C row per
-beat: each accepted beat carries a row index `c_row_in` and a packed row
-`c_row_data_in` (N accumulators, column 0 in the low bits). All N columns of that
-row are written to linear addresses `c_row_in * N + j` (`j = 0..N-1`) in one cycle.
+them row-major for software read-back over APB. The array drains one runtime C
+row per beat: each accepted beat carries a row index `c_row_in` and a packed row
+`c_row_data_in` (N physical accumulator lanes, column 0 in the low bits). Only
+columns `j < N_DIM` are captured, and they are packed into compact readback
+addresses `c_row_in * N_DIM + j`.
 
 ## Block diagram
 
@@ -99,6 +100,8 @@ flowchart TB
 | `c_in_valid` | Input | `1` | Incoming C row valid. The row is captured when valid and the buffer is not yet full (fewer than `M` rows captured). |
 | `c_row_data_in` | Input | `N*ACC_W` | Packed C row (N accumulators, column 0 in the low bits). |
 | `c_row_in` | Input | `$clog2(max(M,2))` | Row index of `c_row_data_in`. |
+| `cfg_m_dim` | Input | `APB_DW` | Latched runtime M dimension; determines capture-full and readback depth. |
+| `cfg_n_dim` | Input | `APB_DW` | Latched runtime N dimension; determines how many columns are captured per row and the compact row stride. |
 
 > The capture path has no `ready`/back-pressure output port: the buffer simply
 > accepts the first `M` rows after reset and ignores any further `c_in_valid`
@@ -115,10 +118,11 @@ flowchart TB
 
 ## Behavior
 
-- Storage is row-major: `C[i,j]` reads back in the order `(0,0)`, `(0,1)`, …, `(M-1,N-1)`.
-- The buffer captures incoming rows while fewer than `M` rows have been stored since the last reset; once full it ignores further `c_in_valid` beats.
+- Storage is compact row-major: `C[i,j]` reads back in the order `(0,0)`,
+  `(0,1)`, …, `(M_DIM-1,N_DIM-1)`.
+- The buffer captures incoming rows while fewer than `M_DIM` rows have been stored since the last reset; once full it ignores further `c_in_valid` beats.
 - Reading `MAT_C_DATA` returns the low `APB_DW` bits of the stored `ACC_W` value.
-- A full C row is written in a single cycle (all N columns at once).
+- A runtime C row is written in a single cycle (columns `0..N_DIM-1`).
 
 ## Notes
 

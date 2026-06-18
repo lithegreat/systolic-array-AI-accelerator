@@ -39,12 +39,20 @@ module matrix_buffer_c
     // Capture from systolic array (one full C row per beat)
     input  logic                       c_in_valid,
     input  logic [N*ACC_W-1:0]         c_row_data_in,
-    input  logic [$clog2((M>1)?M:2)-1:0] c_row_in
+    input  logic [$clog2((M>1)?M:2)-1:0] c_row_in,
+
+    // Runtime compact-tile dimensions (1..physical M/N).
+    input  logic [APB_DW-1:0]          cfg_m_dim,
+    input  logic [APB_DW-1:0]          cfg_n_dim
 );
 
     localparam int unsigned C_DEPTH = M * N;
+    localparam int unsigned C_ADDR_W = (C_DEPTH > 1) ? $clog2(C_DEPTH) : 1;
     localparam int unsigned PTR_W   = (C_DEPTH > 1) ? $clog2(C_DEPTH + 1) : 1;
     localparam int unsigned ROW_W   = (M > 1) ? $clog2(M + 1) : 1;
+
+    logic [APB_DW-1:0] active_c_depth;
+    assign active_c_depth = cfg_m_dim * cfg_n_dim;
 
     logic [ACC_W-1:0] mem_c [C_DEPTH];
     logic [PTR_W-1:0] r_ptr;
@@ -52,8 +60,8 @@ module matrix_buffer_c
 
     logic c_in_ready;
     logic capture_full;
-    assign c_in_ready   = (rows_captured < M);
-    assign capture_full = (rows_captured >= M);
+    assign c_in_ready   = (APB_DW'(rows_captured) < cfg_m_dim);
+    assign capture_full = (APB_DW'(rows_captured) >= cfg_m_dim);
 
     logic apb_access;
     assign apb_access = PSEL && PENABLE;
@@ -64,7 +72,7 @@ module matrix_buffer_c
     assign sel_ctrl = (PADDR[7:0] == MAT_C_CTRL_OFF);
 
     // Flag reads past the captured C window as an error.
-    assign PSLVERR    = apb_access && !PWRITE && sel_data && (r_ptr >= C_DEPTH[PTR_W-1:0]);
+    assign PSLVERR    = apb_access && !PWRITE && sel_data && (APB_DW'(r_ptr) >= active_c_depth);
 
     // -------------------------------------------------------------------------
     // Capture path: write all N columns of the incoming row in one cycle.
@@ -76,7 +84,11 @@ module matrix_buffer_c
             rows_captured <= '0;
         end else if (c_in_valid && c_in_ready) begin
             for (int j = 0; j < N; j++) begin
-                mem_c[c_row_in * N + j] <= c_row_data_in[j*ACC_W +: ACC_W];
+                if (APB_DW'(j) < cfg_n_dim) begin
+                    logic [APB_DW-1:0] c_idx;
+                    c_idx = (APB_DW'(c_row_in) * cfg_n_dim) + APB_DW'(j);
+                    mem_c[c_idx[C_ADDR_W-1:0]] <= c_row_data_in[j*ACC_W +: ACC_W];
+                end
             end
             rows_captured <= rows_captured + 1'b1;
         end
@@ -91,7 +103,7 @@ module matrix_buffer_c
         end else if (apb_access && PWRITE && sel_ctrl && PWDATA[0]) begin
             r_ptr <= '0;
         end else if (apb_access && !PWRITE && sel_data) begin
-            if (r_ptr < C_DEPTH)
+            if (APB_DW'(r_ptr) < active_c_depth)
                 r_ptr <= r_ptr + 1'b1;
         end
     end
@@ -100,7 +112,7 @@ module matrix_buffer_c
         PRDATA = '0;
         if (apb_access && !PWRITE) begin
             if (sel_data) begin
-                PRDATA = (r_ptr < C_DEPTH) ? mem_c[r_ptr][APB_DW-1:0] : '0;
+                PRDATA = (APB_DW'(r_ptr) < active_c_depth) ? mem_c[r_ptr[C_ADDR_W-1:0]][APB_DW-1:0] : '0;
             end else if (sel_ctrl) begin
                 PRDATA[1] = capture_full;
             end

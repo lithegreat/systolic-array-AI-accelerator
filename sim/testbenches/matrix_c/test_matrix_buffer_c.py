@@ -21,6 +21,23 @@ OFF_DATA = 0x00
 OFF_CTRL = 0x80
 
 
+async def apb_read_sample_error(dut, addr: int) -> tuple[int, int, int]:
+    dut.PADDR.value = int(addr)
+    dut.PWRITE.value = 0
+    dut.PSEL.value = 1
+    dut.PENABLE.value = 0
+    await RisingEdge(dut.clk)
+    dut.PENABLE.value = 1
+    await Timer(1, unit="ns")
+    data = int(dut.PRDATA.value)
+    ready = int(dut.PREADY.value)
+    err = int(dut.PSLVERR.value)
+    await RisingEdge(dut.clk)
+    dut.PSEL.value = 0
+    dut.PENABLE.value = 0
+    return data, ready, err
+
+
 def pack_row(values, width: int) -> int:
     """Pack N accumulator values LSB-first (column 0 in the low bits)."""
     word = 0
@@ -39,6 +56,8 @@ async def reset_dut(dut) -> None:
     dut.c_in_valid.value = 0
     dut.c_row_data_in.value = 0
     dut.c_row_in.value = 0
+    dut.cfg_m_dim.value = M
+    dut.cfg_n_dim.value = N
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -106,6 +125,12 @@ async def test_ctrl_read_capture_full_flag(dut) -> None:
         f"capture_full should be 1 after {M} row captures, got 0x{ctrl_val:x}"
     )
 
+    await apb.write(OFF_CTRL, 0x1)
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert not (ctrl_val & 0x2), (
+        f"capture_full should clear after reset, got 0x{ctrl_val:x}"
+    )
+
 
 @cocotb.test()
 async def test_reset_pointer_via_ctrl(dut) -> None:
@@ -133,6 +158,29 @@ async def test_reset_pointer_via_ctrl(dut) -> None:
     await apb.write(OFF_CTRL, 0x1)
     w0b = await apb.read(OFF_DATA)
     assert w0b == 0xDEAD, f"after CTRL reset, expected 0xDEAD got 0x{w0b:x}"
+
+
+@cocotb.test()
+async def test_overread_sets_pslverr(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    # Inject all M rows with known data.
+    for i in range(M):
+        dut.c_row_data_in.value = pack_row([i * N + j for j in range(N)], ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    for _ in range(M * N):
+        _ = await apb.read(OFF_DATA)
+    data, ready, err = await apb_read_sample_error(dut, OFF_DATA)
+    assert ready == 1, "over-read should still complete"
+    assert err == 1, "over-read should raise PSLVERR"
+    assert data == 0, f"over-read data should be zero, got 0x{data:x}"
 
 
 @cocotb.test()
@@ -172,6 +220,31 @@ async def test_read_past_end_returns_slverr(dut) -> None:
 
 
 @cocotb.test()
+async def test_extra_capture_ignored_after_full(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    first_row = [0x100 + j for j in range(N)]
+    for i in range(M):
+        row = first_row if i == 0 else [i * N + j for j in range(N)]
+        dut.c_row_data_in.value = pack_row(row, ACC_W)
+        dut.c_row_in.value = i
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+
+    dut.c_row_data_in.value = pack_row([0xBAD0 + j for j in range(N)], ACC_W)
+    dut.c_row_in.value = 0
+    dut.c_in_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+
+    for expected in first_row:
+        got = await apb.read(OFF_DATA)
+        assert got == expected, f"extra capture overwrote full buffer: got 0x{got:x}"
+
+
+@cocotb.test()
 async def test_double_capture_overwrites(dut) -> None:
     """Capturing a second batch of rows overwrites the first in the memory."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
@@ -205,6 +278,41 @@ async def test_double_capture_overwrites(dut) -> None:
             assert word == 0x11, (
                 f"C[{i},{j}] expected 0x11 (pattern A, second capture blocked), got 0x{word:x}"
             )
+
+
+@cocotb.test()
+async def test_runtime_compact_capture_and_readback(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = ApbMaster(dut)
+
+    runtime_m = min(5, M)
+    runtime_n = min(7, N)
+    dut.cfg_m_dim.value = runtime_m
+    dut.cfg_n_dim.value = runtime_n
+
+    expected = []
+    for row in range(runtime_m):
+        row_vals = [0x200 + row * runtime_n + col for col in range(runtime_n)]
+        expected.extend(row_vals)
+        padded_row = row_vals + [0] * (N - runtime_n)
+        dut.c_row_data_in.value = pack_row(padded_row, ACC_W)
+        dut.c_row_in.value = row
+        dut.c_in_valid.value = 1
+        await RisingEdge(dut.clk)
+    dut.c_in_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    ctrl_val = await apb.read(OFF_CTRL)
+    assert ctrl_val & 0x2, f"runtime capture_full should be set, got 0x{ctrl_val:x}"
+
+    for ref in expected:
+        got = await apb.read(OFF_DATA)
+        assert got == ref, f"compact C readback mismatch: got 0x{got:x} ref=0x{ref:x}"
+
+    _, ready, err = await apb_read_sample_error(dut, OFF_DATA)
+    assert ready == 1
+    assert err == 1, "read beyond runtime M*N should raise PSLVERR"
 
 
 @cocotb.test()

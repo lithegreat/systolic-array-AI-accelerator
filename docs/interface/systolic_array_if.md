@@ -13,8 +13,10 @@
 `systolic_array` instantiates an M×N grid of [`mac_pe`](mac_if.md) cells. Matrix A
 and Matrix B are streamed in lockstep, one `(a_col, b_row)` pair per accepted beat.
 Internal skew chains delay row `i` by `i` cycles and column `j` by `j` cycles so the
-operands meet at the right PE at the right time. Each PE accumulates over `K` valid
-beats, then the array drains the result one C row per beat, top row first.
+operands meet at the right PE at the right time. Runtime dimensions select the
+active sub-tile; inactive physical rows/columns are masked to zero. Each active PE
+accumulates over `K_DIM` valid beats, then the array drains one active C row per
+beat, top row first.
 
 ## Block diagram
 
@@ -91,6 +93,9 @@ flowchart LR
 | Port | Direction | Width | Description |
 | --- | --- | --- | --- |
 | `start` | Input | `1` | Pulse that launches one M×N output tile. Sampled in `IDLE`. |
+| `cfg_m_dim` | Input | `32` | Runtime active row count, latched by the control unit on start. |
+| `cfg_n_dim` | Input | `32` | Runtime active column count, latched by the control unit on start. |
+| `cfg_k_dim` | Input | `32` | Runtime reduction length, latched by the control unit on start. |
 | `in_valid` | Input | `1` | Input beat valid this cycle. |
 | `in_ready` | Output | `1` | Array can accept an input beat this cycle. |
 | `out_valid` | Output | `1` | Output row valid this cycle. |
@@ -113,18 +118,21 @@ flowchart LR
 - Each PE owns one `C[i,j]` accumulator.
 - One input beat supplies the whole A column `A[:,k]` and the whole B row `B[k,:]`.
 - Skew shift chains delay row `i` by `i` cycles and column `j` by `j` cycles.
-- Each PE accumulates over exactly `K` valid windows, then the array drains results one row per beat, top to bottom.
-- The compute phase lasts `M + N + K − 2` internal pipeline cycles before drain starts.
+- Each active PE accumulates over exactly `K_DIM` valid windows, then the array
+   drains `M_DIM` result rows, top to bottom. Columns `j >= N_DIM` are zero in the
+   packed row output and ignored by `matrix_buffer_c`.
+- The compute phase lasts `M_DIM + N_DIM + K_DIM − 2` internal pipeline cycles before drain starts.
 
 ### Handshake & timing
 
 - A beat is consumed only when `in_valid && in_ready`; A and B are consumed together.
 - `in_valid` / `out_valid` may stay high across cycles; if the matching `*_ready` is low, the data is stalled and must be held stable.
-- One output row (N elements) is produced per ready cycle after the pipeline latency.
+- One active output row is produced per ready cycle after the runtime pipeline latency.
 - `done` asserts for one cycle after the last C row is accepted.
 
 ## Notes
 
 - C drains in row-major order.
-- Drain index decoding assumes `M` and `N` are powers of two.
+- Drain index decoding works for any positive `M` and `N`; current named build
+   variants use square tiles (`M=N=K`) for the standalone runner and FPGA flow.
 - Assumes the A/B buffer provides one aligned `(a_col, b_row)` pair per accepted beat.

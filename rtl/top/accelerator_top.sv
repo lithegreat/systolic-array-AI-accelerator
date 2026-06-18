@@ -94,10 +94,33 @@ module accelerator_top
     logic [N*ACC_W-1:0]  c_row_data;
     logic [$clog2((M>1)?M:2)-1:0] c_row;
 
+    logic [APB_DW-1:0]  cfg_m_dim;
+    logic [APB_DW-1:0]  cfg_n_dim;
+    logic [APB_DW-1:0]  cfg_k_dim;
+    logic [APB_DW-1:0]  run_m_dim;
+    logic [APB_DW-1:0]  run_n_dim;
+    logic [APB_DW-1:0]  run_k_dim;
+
+    logic perf_apb_complete;
+    logic perf_apb_write;
+    logic perf_apb_read;
+    logic perf_input_stall;
+    logic perf_output_stall;
+
+    assign perf_apb_complete = PSEL && PENABLE && PREADY;
+    assign perf_apb_write    = perf_apb_complete && PWRITE;
+    assign perf_apb_read     = perf_apb_complete && !PWRITE;
+    assign perf_input_stall  = sys_ready && !mat_valid;
+    assign perf_output_stall = out_valid && !out_ready;
+
     // -------------------------------------------------------------------------
     // control_unit
     // -------------------------------------------------------------------------
     control_unit #(
+        .DATA_W   (DATA_W),
+        .M        (M),
+        .N        (N),
+        .K        (K),
         .APB_AW   (APB_AW),
         .APB_DW   (APB_DW)
     ) u_control (
@@ -116,7 +139,17 @@ module accelerator_top
         .irq_4        (irq_4),
         .array_start  (array_start),
         .array_clear  (array_clear),
-        .array_done   (array_done)
+        .array_done   (array_done),
+        .cfg_m_dim    (cfg_m_dim),
+        .cfg_n_dim    (cfg_n_dim),
+        .cfg_k_dim    (cfg_k_dim),
+        .run_m_dim    (run_m_dim),
+        .run_n_dim    (run_n_dim),
+        .run_k_dim    (run_k_dim),
+        .perf_apb_write(perf_apb_write),
+        .perf_apb_read(perf_apb_read),
+        .perf_input_stall(perf_input_stall),
+        .perf_output_stall(perf_output_stall)
     );
 
     // -------------------------------------------------------------------------
@@ -143,6 +176,9 @@ module accelerator_top
         .mat_start(array_start),
         .mat_valid(mat_valid),
         .sys_ready(sys_ready),
+        .cfg_m_dim(cfg_m_dim),
+        .cfg_n_dim(cfg_n_dim),
+        .cfg_k_dim(cfg_k_dim),
         .a_col    (a_col),
         .b_row    (b_row)
     );
@@ -161,6 +197,9 @@ module accelerator_top
         .rst_n    (rst_n),
         .start    (array_start),
         .done     (array_done),
+        .cfg_m_dim(run_m_dim),
+        .cfg_n_dim(run_n_dim),
+        .cfg_k_dim(run_k_dim),
         .in_valid (mat_valid),
         .in_ready (sys_ready),
         .a_col    (a_col),
@@ -200,7 +239,9 @@ module accelerator_top
         .PSLVERR     (err_c),
         .c_in_valid  (out_valid),
         .c_row_data_in(c_row_data),
-        .c_row_in    (c_row)
+        .c_row_in    (c_row),
+        .cfg_m_dim   (run_m_dim),
+        .cfg_n_dim   (run_n_dim)
     );
 
 endmodule

@@ -17,11 +17,23 @@ REG_N_DIM = 0x0C
 REG_INT_EN = 0x10
 REG_INT_STAT = 0x14
 REG_K_DIM = 0x18
+REG_BUILD_INFO = 0x1C
+REG_HW_STATUS = 0x20
+REG_PERF_CTRL = 0x24
+REG_PERF_CYCLES = 0x28
+REG_PERF_APB_WRITES = 0x2C
+REG_PERF_APB_READS = 0x30
+REG_PERF_IN_STALLS = 0x34
+REG_PERF_OUT_STALLS = 0x38
 
 CTRL_START = 1 << 0
 CTRL_SOFTRST = 1 << 1
 STATUS_BUSY = 1 << 0
 STATUS_DONE = 1 << 1
+PERF_CLEAR = 1 << 0
+HW_STATUS_IN_STALL_SEEN = 1 << 1
+HW_STATUS_OUT_STALL_SEEN = 1 << 2
+HW_STATUS_COUNTER_OVERFLOW = 1 << 3
 
 
 class CtrlApb(ApbMaster):
@@ -73,6 +85,10 @@ async def reset_dut(dut) -> None:
     dut.PADDR.value = 0
     dut.PWDATA.value = 0
     dut.array_done.value = 0
+    dut.perf_apb_write.value = 0
+    dut.perf_apb_read.value = 0
+    dut.perf_input_stall.value = 0
+    dut.perf_output_stall.value = 0
     dut.irq_en_4.value = 1
     dut.ss_ctrl_4.value = 0
     for _ in range(4):
@@ -91,16 +107,25 @@ async def test_register_rw(dut) -> None:
     assert (await apb.read(REG_M_DIM)) == 16
     assert (await apb.read(REG_N_DIM)) == 16
     assert (await apb.read(REG_K_DIM)) == 16
+    assert (await apb.read(REG_BUILD_INFO)) == 0x08101010
 
     await apb.write(REG_M_DIM, 8)
     await apb.write(REG_N_DIM, 16)
     await apb.write(REG_K_DIM, 32)
     assert (await apb.read(REG_M_DIM)) == 8
     assert (await apb.read(REG_N_DIM)) == 16
-    assert (await apb.read(REG_K_DIM)) == 32
+    assert (await apb.read(REG_K_DIM)) == 16
 
     await apb.write(REG_INT_EN, 0x1)
     assert (await apb.read(REG_INT_EN)) == 0x1
+
+    # Runtime dimensions are clamped into 1..physical when idle.
+    await apb.write(REG_M_DIM, 0)
+    await apb.write(REG_N_DIM, 999)
+    await apb.write(REG_K_DIM, 0)
+    assert (await apb.read(REG_M_DIM)) == 1
+    assert (await apb.read(REG_N_DIM)) == 16
+    assert (await apb.read(REG_K_DIM)) == 1
 
 
 @cocotb.test()
@@ -167,6 +192,77 @@ async def test_soft_reset(dut) -> None:
 
 
 @cocotb.test()
+async def test_start_while_busy_is_ignored(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+
+    status = await apb.read(REG_STATUS)
+    assert status & STATUS_BUSY, f"expected BUSY before second start, got 0x{status:x}"
+
+    await apb.write(REG_CTRL, CTRL_START)
+    saw_second_start = False
+    for _ in range(5):
+        await RisingEdge(dut.clk_in)
+        saw_second_start |= bool(int(dut.array_start.value))
+    assert not saw_second_start, "CTRL.start while BUSY should not re-issue array_start"
+
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+
+
+@cocotb.test()
+async def test_dimension_writes_ignored_while_busy(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_M_DIM, 4)
+    await apb.write(REG_N_DIM, 5)
+    await apb.write(REG_K_DIM, 6)
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+    await apb.write(REG_M_DIM, 7)
+    await apb.write(REG_N_DIM, 8)
+    await apb.write(REG_K_DIM, 9)
+    assert (await apb.read(REG_M_DIM)) == 4
+    assert (await apb.read(REG_N_DIM)) == 5
+    assert (await apb.read(REG_K_DIM)) == 6
+
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+
+
+@cocotb.test()
+async def test_status_done_w1c(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+
+    status = await apb.read(REG_STATUS)
+    assert status & STATUS_DONE, f"expected DONE before W1C, got 0x{status:x}"
+    await apb.write(REG_STATUS, STATUS_DONE)
+    status = await apb.read(REG_STATUS)
+    assert not (status & STATUS_DONE), f"DONE should clear after W1C, got 0x{status:x}"
+
+
+@cocotb.test()
 async def test_read_ctrl_and_int_stat_registers(dut) -> None:
     """Read REG_CTRL, REG_INT_STAT, and an unmapped address to hit the read-mux default."""
     cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
@@ -197,6 +293,58 @@ async def test_read_ctrl_and_int_stat_registers(dut) -> None:
     # Read an unmapped address (e.g. 0xFC) → default branch returns 0.
     unmapped = await apb.read(0xFC)
     assert unmapped == 0, f"unmapped read should return 0, got 0x{unmapped:x}"
+
+
+@cocotb.test()
+async def test_perf_and_status_registers(dut) -> None:
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_dut(dut)
+    apb = CtrlApb(dut)
+
+    await apb.write(REG_PERF_CTRL, PERF_CLEAR)
+    assert (await apb.read(REG_PERF_CYCLES)) == 0
+    assert (await apb.read(REG_PERF_APB_WRITES)) == 0
+    assert (await apb.read(REG_PERF_APB_READS)) == 0
+
+    dut.perf_apb_write.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.perf_apb_write.value = 0
+    dut.perf_apb_read.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.perf_apb_read.value = 0
+
+    assert (await apb.read(REG_PERF_APB_WRITES)) == 1
+    assert (await apb.read(REG_PERF_APB_READS)) == 1
+
+    await apb.write(REG_CTRL, CTRL_START)
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+
+    dut.perf_input_stall.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.perf_input_stall.value = 0
+
+    dut.array_done.value = 1
+    await RisingEdge(dut.clk_in)
+    dut.array_done.value = 0
+    for _ in range(3):
+        await RisingEdge(dut.clk_in)
+
+    cycles = await apb.read(REG_PERF_CYCLES)
+    in_stalls = await apb.read(REG_PERF_IN_STALLS)
+    out_stalls = await apb.read(REG_PERF_OUT_STALLS)
+    hw_status = await apb.read(REG_HW_STATUS)
+
+    assert cycles > 0, "PERF_CYCLES should count the active compute window"
+    assert in_stalls == 1, f"expected one input stall, got {in_stalls}"
+    assert out_stalls == 0, f"expected no output stalls, got {out_stalls}"
+    assert hw_status & HW_STATUS_IN_STALL_SEEN, "input-stall sticky bit should be set"
+    assert not (hw_status & HW_STATUS_OUT_STALL_SEEN), (
+        "output-stall sticky bit should be clear"
+    )
+    assert not (hw_status & HW_STATUS_COUNTER_OVERFLOW), (
+        "overflow sticky bit should be clear"
+    )
 
 
 @cocotb.test()
