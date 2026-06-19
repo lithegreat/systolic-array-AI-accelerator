@@ -99,10 +99,113 @@ sufficient to prove RTL integration in the meantime.
 
 ## Prototyping on the FPGA (PYNQ-Z1)
 
-- Open a new terminal and load Vivado: `module load xilinx/vivado/2024.1`.
-- Open the project `Didactic-SoC/build/fpga/z1/didactic-z1.xpr` (built by
-  `make all_xilinx` in `Didactic-SoC/fpga`).
-- Write the bitstream to the FPGA.
+The verified accelerator path for PYNQ-Z1 is the `int8_8x8` build. Keep the
+firmware vectors and the bitstream variant in lockstep: the firmware reads the
+accelerator `BUILD_INFO` register at boot and reports `accel: BUILD INFO
+MISMATCH` if the software's `ACC_M/N/K/DATA_W` values do not match the physical
+array compiled into the bitstream.
+
+### End-to-end accelerator flow
+
+Run these commands from the repository root on the lab server unless noted
+otherwise.
+
+1. Generate firmware vectors for the same accelerator variant that will be built
+  into the FPGA bitstream:
+
+  ```bash
+  VARIANT=int8_8x8
+  python3 sim/common/c_code/gen_accel_data.py \
+     --variant "$VARIANT" \
+     --out Didactic-SoC/fpga/sw/accel/accel_gemm_data.h
+  ```
+
+2. Build the FPGA software image. The lab module provides
+  `riscv64-unknown-elf-gcc`; the Makefile still emits 32-bit Ibex code through
+  `-march=rv32imc -mabi=ilp32`:
+
+  ```bash
+  module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
+  cd Didactic-SoC/fpga/sw
+  make -B test TESTCASE=accel
+  cd ../../..
+  ```
+
+  The output ELF is `Didactic-SoC/build/fpga/sw/accel.elf`.
+
+3. Build the matching PYNQ-Z1 bitstream:
+
+  ```bash
+  module load xilinx/vivado/2024.1
+  cd Didactic-SoC/fpga
+  make all_xilinx ACCEL_VARIANT="$VARIANT"
+  cd ../..
+  ```
+
+  The bitstream is written under
+  `Didactic-SoC/build/fpga/z1/didactic-z1.runs/impl_1/DidacticZ1.bit`.
+
+4. Program the PYNQ-Z1 from Vivado Hardware Manager. Open the generated project
+  `Didactic-SoC/build/fpga/z1/didactic-z1.xpr`, connect to the board, and write
+  `DidacticZ1.bit` to the FPGA.
+
+5. Configure OpenOCD for the FT4232H JTAG adapter on the machine where the
+  adapter is physically attached. The PID should be `0x6011`, and the serial
+  must match the attached adapter:
+
+  ```bash
+  cd Didactic-SoC/fpga/utils
+  serial=$(lsusb -v -d 0403:6011 | grep iSerial | sed -n 's/.* //p')
+  sed -i "s/^adapter serial .*/adapter serial ${serial}; # either comment out or modify to match adapter/" openocd-didactic.cfg
+  sed -i "s/ftdi vid_pid 0x0403 0x6010/ftdi vid_pid 0x0403 0x6011/" openocd-didactic.cfg
+  cd ../../..
+  ```
+
+  Do not run the serial replacement on a remote server that cannot see the USB
+  device; an empty `serial` value will make the OpenOCD config harder to use.
+
+6. Start OpenOCD in one terminal:
+
+  ```bash
+  openocd -f Didactic-SoC/fpga/utils/openocd-didactic.cfg
+  ```
+
+7. Load and run the ELF from a second terminal:
+
+  ```bash
+  module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05
+  cd Didactic-SoC/fpga
+  make load_elf TEST=accel
+  ```
+
+  In GDB, type `c` to continue. The UART should print `accel: start` followed
+  by `accel: PASS` when the run succeeds. Use `Ctrl+C` to halt and `quit` to
+  leave GDB.
+
+### FPGA debug notes
+
+`accel.elf` prints the hardware and software build geometry if the `BUILD_INFO`
+check fails. Interpret the 32-bit value as `[31:24]=DATA_W`, `[23:16]=K`,
+`[15:8]=N`, `[7:0]=M`:
+
+- `hw build=0x08080808`, `sw build=0x08101010`: the board has an 8x8 bitstream,
+  but the loaded ELF was built with 16x16 vectors. Regenerate
+  `Didactic-SoC/fpga/sw/accel/accel_gemm_data.h` with `--variant int8_8x8` and
+  reload `accel.elf`.
+- `hw build=0x08101010`, `sw build=0x08080808`: the ELF is for 8x8, but the FPGA
+  is running a 16x16 bitstream. Rebuild and reprogram the PYNQ-Z1 bitstream with
+  `ACCEL_VARIANT=int8_8x8`.
+- `hw build=0x00000000`: the CPU is not reading the accelerator register window.
+  Check that the accelerator bitstream is programmed, `ss_init(ACCEL_SS)` ran,
+  the TUM subsystem clock/reset are enabled, and the APB base address is still
+  `0x0105_1000`.
+
+Useful GDB reads while halted:
+
+```gdb
+x/wx 0x0105111c   # REG_BUILD_INFO
+p/x accel_result  # PASS=0xACCE5500, mismatch=0xBADD0002
+```
 
 ### Synthesis status (verified) and PYNQ-Z1 capacity
 
@@ -158,15 +261,6 @@ server with the accelerator integrated into the SoC. Results:
 > Note: `Didactic-SoC/fpga/scripts/run_xilinx.tcl` hardcodes the synthesis
 > include paths (like the sim Makefile). The accelerator's `rtl/include` was
 > added there so Vivado can resolve `accel_pkg.sv`.
-- Connect the JTAG IO pins on the FPGA board to the FT4232H module.
-- Open an OpenOCD connection in a new terminal:
-  `openocd -f Didactic-SoC/fpga/utils/openocd-didactic.cfg`.
-- Load the RISC-V compiler module:
-  `module load eda_freeware/riscv/64-elf-ubuntu-24.04-gcc/2026.04.05`.
-- Run `make load_elf` in `Didactic-SoC/fpga`.
-- To start execution: type `c` and press Enter.
-- To halt execution: press `Ctrl+C`.
-- To quit the debugging session: type `quit`.
 
 ## Changing the program loaded onto the Ibex core
 
