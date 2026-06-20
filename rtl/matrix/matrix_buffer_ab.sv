@@ -89,6 +89,8 @@ module matrix_buffer_ab
     logic [K_W-1:0] next_a_wcol;
 
     always_comb begin
+        a_wrow_d = '{default: '0};
+        a_wcol_d = '{default: '0};
         a_wrow_d[0] = a_wrow_q;
         a_wcol_d[0] = a_wcol_q;
         for (int e = 1; e < EPW; e++) begin
@@ -116,6 +118,8 @@ module matrix_buffer_ab
     logic [N_W-1:0] next_b_wcol;
 
     always_comb begin
+        b_wrow_d = '{default: '0};
+        b_wcol_d = '{default: '0};
         b_wrow_d[0] = b_wrow_q;
         b_wcol_d[0] = b_wcol_q;
         for (int e = 1; e < EPW; e++) begin
