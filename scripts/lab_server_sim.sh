@@ -84,10 +84,24 @@ module load mentor/questasim/2023.4
 export LM_LICENSE_FILE MGLS_LICENSE_FILE
 echo "== license:  LM_LICENSE_FILE=$LM_LICENSE_FILE"
 
+# --- pre-resolve bender dependencies on host to avoid container glibc mismatch -
+echo "== Pre-resolving bender dependencies on host..."
+COMMON_CELLS_DIR="$(cd "$SOC_DIR" && bender path common_cells)"
+AXI_DIR="$(cd "$SOC_DIR" && bender path axi)"
+APB_DIR="$(cd "$SOC_DIR" && bender path apb)"
+REGIF_DIR="$(cd "$SOC_DIR" && bender path register_interface)"
+OBI_DIR="$(cd "$SOC_DIR" && bender path obi)"
+SIM_FLIST="$(cd "$SOC_DIR" && bender script flist -t rtl -t vendor -t simulation -t tracer -t didactic_obi | tr '\n' ' ')"
+
+
+
 # Headless run: drive the sim to completion and quit (the SoC sim Makefile
 # otherwise defaults to a GUI-friendly "run 0ms;"). Override with RUN_CMD=...
 RUN_CMD="${RUN_CMD:-run -all; quit -f}"
 echo "== run_cmd:  $RUN_CMD"
+
+# Bundle overrides
+MAKE_OVERRIDES="COMMON_CELLS_DIR='$COMMON_CELLS_DIR' AXI_DIR='$AXI_DIR' APB_DIR='$APB_DIR' REGIF_DIR='$REGIF_DIR' OBI_DIR='$OBI_DIR' SIM_FLIST='$SIM_FLIST'"
 
 apptainer exec \
     --env PATH="$PATH" \
@@ -97,9 +111,10 @@ apptainer exec \
     "$SIF" bash -c "
         set -e
         cd '$SOC_DIR/sim'
-        make compile
-        make elaborate TESTCASE='$TESTCASE'
-        make run_sim TESTCASE='$TESTCASE' ${GUI:+GUI=$GUI} RUN_CMD='$RUN_CMD'
+        make compile $MAKE_OVERRIDES
+        make elaborate TESTCASE='$TESTCASE' $MAKE_OVERRIDES
+        make run_sim TESTCASE='$TESTCASE' ${GUI:+GUI=$GUI} RUN_CMD='$RUN_CMD' $MAKE_OVERRIDES
     "
 
 echo "== done."
+
