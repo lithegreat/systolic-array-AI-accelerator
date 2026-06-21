@@ -9,9 +9,9 @@
 //                            [1]=A bank full, [2]=B bank full (RO bits).
 //
 // Each APB write unpacks `APB_DW/DATA_W` elements (LSB-first) into the bank.
-// Storage holds the matrices in row-major order:
-//   A[i,k] -> offset i*K + k
-//   B[k,j] -> offset k*N + j
+// Storage holds the matrices in 2D-partitioned layout for multiplier-free access:
+//   A[i,k] -> mem_a[i][k]
+//   B[k,j] -> mem_b[k][j]
 //
 // Streaming read port (to systolic_array):
 //   * On `mat_start`, present beat-0 immediately with mat_valid=1.
@@ -58,27 +58,24 @@ module matrix_buffer_ab
     output logic [N*DATA_W-1:0]        b_row
 );
 
-    localparam int unsigned A_DEPTH       = M * K;
-    localparam int unsigned B_DEPTH       = K * N;
-    localparam int unsigned EPW           = APB_DW / DATA_W;          // elements per APB word
-    localparam int unsigned A_ADDR_W      = (A_DEPTH > 1) ? $clog2(A_DEPTH) : 1;
-    localparam int unsigned B_ADDR_W      = (B_DEPTH > 1) ? $clog2(B_DEPTH) : 1;
-    localparam int unsigned A_PTR_W       = (A_DEPTH > 1) ? $clog2(A_DEPTH + 1) : 1;
-    localparam int unsigned B_PTR_W       = (B_DEPTH > 1) ? $clog2(B_DEPTH + 1) : 1;
+    localparam int unsigned EPW           = APB_DW / DATA_W;  // elements per APB word
+    localparam int unsigned M_W           = (M > 1) ? $clog2(M + 1) : 1;
+    localparam int unsigned N_W           = (N > 1) ? $clog2(N + 1) : 1;
     localparam int unsigned K_W           = (K > 1) ? $clog2(K + 1) : 1;
+    localparam int unsigned A_COL_IDX_W   = (K > 1) ? $clog2(K) : 1;
+    localparam int unsigned B_ROW_IDX_W   = (K > 1) ? $clog2(K) : 1;
 
-    logic [APB_DW-1:0] active_a_depth;
-    logic [APB_DW-1:0] active_b_depth;
-    assign active_a_depth = cfg_m_dim * cfg_k_dim;
-    assign active_b_depth = cfg_k_dim * cfg_n_dim;
+    // Storage banks - 2D Partitioned Array (eliminates runtime multiplications)
+    //   A[i,k] -> mem_a[i][k]  (row = M-index, col = K-index)
+    //   B[k,j] -> mem_b[k][j]  (row = K-index, col = N-index)
+    logic [DATA_W-1:0] mem_a [M][K];
+    logic [DATA_W-1:0] mem_b [K][N];
 
-    // Storage banks
-    logic [DATA_W-1:0] mem_a [A_DEPTH];
-    logic [DATA_W-1:0] mem_b [B_DEPTH];
-
-    // Write pointers
-    logic [A_PTR_W-1:0] a_wptr;
-    logic [B_PTR_W-1:0] b_wptr;
+    // Write pointers (2D row/col counters, no multiplier needed)
+    logic [M_W-1:0] a_wrow_q;
+    logic [K_W-1:0] a_wcol_q;
+    logic [K_W-1:0] b_wrow_q;
+    logic [N_W-1:0] b_wcol_q;
 
     // -------------------------------------------------------------------------
     // APB transaction qualifier
@@ -96,8 +93,73 @@ module matrix_buffer_ab
     // Flag writes that would push past a bank's capacity so software
     // over-runs surface instead of being silently dropped.
     assign PSLVERR    = apb_access && PWRITE &&
-                        ((sel_a && (APB_DW'(a_wptr) >= active_a_depth)) ||
-                         (sel_b && (APB_DW'(b_wptr) >= active_b_depth)));
+                        ((sel_a && (APB_DW'(a_wrow_q) >= cfg_m_dim)) ||
+                         (sel_b && (APB_DW'(b_wrow_q) >= cfg_k_dim)));
+
+    // -------------------------------------------------------------------------
+    // Sequential 2D Write Pointer Incrementers (no multiplication/division)
+    //
+    // For each APB word we write EPW=4 elements. We compute the (row,col) of
+    // each sub-element in a combinational carry chain, then register the final
+    // next-(row,col) for the following beat.
+    // -------------------------------------------------------------------------
+    logic [M_W-1:0] a_wrow_d [EPW];
+    logic [K_W-1:0] a_wcol_d [EPW];
+    logic [M_W-1:0] next_a_wrow;
+    logic [K_W-1:0] next_a_wcol;
+
+    always_comb begin
+        a_wrow_d = '{default: '0};
+        a_wcol_d = '{default: '0};
+        a_wrow_d[0] = a_wrow_q;
+        a_wcol_d[0] = a_wcol_q;
+        for (int e = 1; e < EPW; e++) begin
+            if (a_wcol_d[e-1] == cfg_k_dim[K_W-1:0] - 1'b1) begin
+                a_wcol_d[e] = '0;
+                a_wrow_d[e] = a_wrow_d[e-1] + 1'b1;
+            end else begin
+                a_wcol_d[e] = a_wcol_d[e-1] + 1'b1;
+                a_wrow_d[e] = a_wrow_d[e-1];
+            end
+        end
+
+        if (a_wcol_d[EPW-1] == cfg_k_dim[K_W-1:0] - 1'b1) begin
+            next_a_wcol = '0;
+            next_a_wrow = a_wrow_d[EPW-1] + 1'b1;
+        end else begin
+            next_a_wcol = a_wcol_d[EPW-1] + 1'b1;
+            next_a_wrow = a_wrow_d[EPW-1];
+        end
+    end
+
+    logic [K_W-1:0] b_wrow_d [EPW];
+    logic [N_W-1:0] b_wcol_d [EPW];
+    logic [K_W-1:0] next_b_wrow;
+    logic [N_W-1:0] next_b_wcol;
+
+    always_comb begin
+        b_wrow_d = '{default: '0};
+        b_wcol_d = '{default: '0};
+        b_wrow_d[0] = b_wrow_q;
+        b_wcol_d[0] = b_wcol_q;
+        for (int e = 1; e < EPW; e++) begin
+            if (b_wcol_d[e-1] == cfg_n_dim[N_W-1:0] - 1'b1) begin
+                b_wcol_d[e] = '0;
+                b_wrow_d[e] = b_wrow_d[e-1] + 1'b1;
+            end else begin
+                b_wcol_d[e] = b_wcol_d[e-1] + 1'b1;
+                b_wrow_d[e] = b_wrow_d[e-1];
+            end
+        end
+
+        if (b_wcol_d[EPW-1] == cfg_n_dim[N_W-1:0] - 1'b1) begin
+            next_b_wcol = '0;
+            next_b_wrow = b_wrow_d[EPW-1] + 1'b1;
+        end else begin
+            next_b_wcol = b_wcol_d[EPW-1] + 1'b1;
+            next_b_wrow = b_wrow_d[EPW-1];
+        end
+    end
 
     // -------------------------------------------------------------------------
     // APB write logic (zero-wait)
@@ -106,29 +168,35 @@ module matrix_buffer_ab
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            a_wptr <= '0;
-            b_wptr <= '0;
+            a_wrow_q <= '0;
+            a_wcol_q <= '0;
+            b_wrow_q <= '0;
+            b_wcol_q <= '0;
         end else begin
             if (ctrl_reset_ptrs) begin
-                a_wptr <= '0;
-                b_wptr <= '0;
+                a_wrow_q <= '0;
+                a_wcol_q <= '0;
+                b_wrow_q <= '0;
+                b_wcol_q <= '0;
             end else begin
                 if (apb_access && PWRITE && sel_a) begin
-                    for (int e = 0; e < EPW; e++) begin
-                        if (APB_DW'(a_wptr + e) < active_a_depth)
-                            mem_a[a_wptr + e] <= PWDATA[e*DATA_W +: DATA_W];
-                    end
-                    if (a_wptr < A_DEPTH) begin
-                        a_wptr <= ((a_wptr + EPW) > A_DEPTH) ? A_DEPTH[A_PTR_W-1:0] : (a_wptr + EPW[A_PTR_W-1:0]);
+                    if (APB_DW'(a_wrow_q) < cfg_m_dim) begin
+                        for (int e = 0; e < EPW; e++) begin
+                            if (APB_DW'(a_wrow_d[e]) < cfg_m_dim)
+                                mem_a[a_wrow_d[e]][a_wcol_d[e]] <= PWDATA[e*DATA_W +: DATA_W];
+                        end
+                        a_wrow_q <= next_a_wrow;
+                        a_wcol_q <= next_a_wcol;
                     end
                 end
                 if (apb_access && PWRITE && sel_b) begin
-                    for (int e = 0; e < EPW; e++) begin
-                        if (APB_DW'(b_wptr + e) < active_b_depth)
-                            mem_b[b_wptr + e] <= PWDATA[e*DATA_W +: DATA_W];
-                    end
-                    if (b_wptr < B_DEPTH) begin
-                        b_wptr <= ((b_wptr + EPW) > B_DEPTH) ? B_DEPTH[B_PTR_W-1:0] : (b_wptr + EPW[B_PTR_W-1:0]);
+                    if (APB_DW'(b_wrow_q) < cfg_k_dim) begin
+                        for (int e = 0; e < EPW; e++) begin
+                            if (APB_DW'(b_wrow_d[e]) < cfg_k_dim)
+                                mem_b[b_wrow_d[e]][b_wcol_d[e]] <= PWDATA[e*DATA_W +: DATA_W];
+                        end
+                        b_wrow_q <= next_b_wrow;
+                        b_wcol_q <= next_b_wcol;
                     end
                 end
             end
@@ -143,8 +211,8 @@ module matrix_buffer_ab
     always_comb begin
         PRDATA = '0;
         if (apb_access && !PWRITE && sel_ctrl) begin
-            PRDATA[1] = (APB_DW'(a_wptr) >= active_a_depth);
-            PRDATA[2] = (APB_DW'(b_wptr) >= active_b_depth);
+            PRDATA[1] = (APB_DW'(a_wrow_q) >= cfg_m_dim);
+            PRDATA[2] = (APB_DW'(b_wrow_q) >= cfg_k_dim);
         end
     end
 
@@ -185,23 +253,17 @@ module matrix_buffer_ab
         end
     end
 
-    // Compact runtime tile layout:
-    //   A[i,k] -> i*cfg_k_dim + k for i < cfg_m_dim, k < cfg_k_dim
-    //   B[k,j] -> k*cfg_n_dim + j for k < cfg_k_dim, j < cfg_n_dim
+    // Streaming output: direct 2D indexing, no runtime multiplication.
     // Inactive physical rows/columns are streamed as zero.
     genvar gi, gj;
     generate
         for (gi = 0; gi < M; gi++) begin : g_a_drive
-            logic [APB_DW-1:0] a_idx;
-            assign a_idx = (APB_DW'(gi) * cfg_k_dim) + APB_DW'(k_q);
             assign a_col[(gi+1)*DATA_W-1 -: DATA_W] =
-                (APB_DW'(gi) < cfg_m_dim) ? mem_a[a_idx[A_ADDR_W-1:0]] : '0;
+                (APB_DW'(gi) < cfg_m_dim) ? mem_a[gi][k_q[A_COL_IDX_W-1:0]] : '0;
         end
         for (gj = 0; gj < N; gj++) begin : g_b_drive
-            logic [APB_DW-1:0] b_idx;
-            assign b_idx = (APB_DW'(k_q) * cfg_n_dim) + APB_DW'(gj);
             assign b_row[(gj+1)*DATA_W-1 -: DATA_W] =
-                (APB_DW'(gj) < cfg_n_dim) ? mem_b[b_idx[B_ADDR_W-1:0]] : '0;
+                (APB_DW'(gj) < cfg_n_dim) ? mem_b[k_q[B_ROW_IDX_W-1:0]][gj] : '0;
         end
     endgenerate
 
