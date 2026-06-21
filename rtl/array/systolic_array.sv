@@ -75,10 +75,20 @@ module systolic_array #(
     logic accept_in;   // (in_valid && in_ready)
     logic accept_out;  // (out_valid && out_ready)
 
-    logic [31:0] compute_last;
-    logic [31:0] drain_last;
-    assign compute_last = cfg_m_dim + cfg_n_dim + cfg_k_dim - 32'd3;
-    assign drain_last   = cfg_m_dim - 32'd1;
+    // Opt-D: register the FSM thresholds at start so comparisons use a flop
+    //        output rather than a combinational adder chain each cycle.
+    logic [31:0] compute_last_q;
+    logic [31:0] drain_last_q;
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            compute_last_q <= '0;
+            drain_last_q   <= '0;
+        end else if (state_q == S_IDLE && start) begin
+            compute_last_q <= cfg_m_dim + cfg_n_dim + cfg_k_dim - 32'd3;
+            drain_last_q   <= cfg_m_dim - 32'd1;
+        end
+    end
 
     assign in_ready  = (state_q == S_RUN) && (32'(k_cnt_q) < cfg_k_dim);
     assign accept_in = in_ready && in_valid;
@@ -93,9 +103,10 @@ module systolic_array #(
         state_d = state_q;
         unique case (state_q)
             S_IDLE: if (start) state_d = S_RUN;
-            S_RUN:  if (step && (32'(t_cnt_q) == compute_last))
+            // Opt-D: compare against registered thresholds (not combinational adders)
+            S_RUN:  if (step && (32'(t_cnt_q) == compute_last_q))
                         state_d = S_DRAIN;
-            S_DRAIN: if (accept_out && (32'(d_cnt_q) == drain_last))
+            S_DRAIN: if (accept_out && (32'(d_cnt_q) == drain_last_q))
                         state_d = S_DONE;
             S_DONE: state_d = S_IDLE;
             default: state_d = S_IDLE;
@@ -125,6 +136,26 @@ module systolic_array #(
                     d_cnt_q <= '0;
                 end
             end
+        end
+    end
+
+    // -------------------------------------------------------------------------
+    // Opt-C: Row/column activation registers.
+    // Computed once when start fires; each PE reads a 1-bit flag instead of
+    // doing a 32-bit comparison against cfg_m/n_dim every cycle.
+    // -------------------------------------------------------------------------
+    logic row_active_q [M];
+    logic col_active_q [N];
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            for (int i = 0; i < M; i++) row_active_q[i] <= 1'b0;
+            for (int j = 0; j < N; j++) col_active_q[j] <= 1'b0;
+        end else if (state_q == S_IDLE && start) begin
+            for (int i = 0; i < M; i++)
+                row_active_q[i] <= (32'(i) < cfg_m_dim);
+            for (int j = 0; j < N; j++)
+                col_active_q[j] <= (32'(j) < cfg_n_dim);
         end
     end
 
@@ -199,9 +230,11 @@ module systolic_array #(
                 logic en_pe;
                 logic clr_pe;
                 // Window: t in [i+j, i+j+K-1]
+                // Opt-C: use registered row/col active flags instead of
+                //        live 32-bit comparisons against cfg_m/n_dim.
                 assign en_pe  = step
-                                && (32'(gi) < cfg_m_dim)
-                                && (32'(gj) < cfg_n_dim)
+                                && row_active_q[gi]
+                                && col_active_q[gj]
                                 && (32'(t_cnt_q) >= (32'(gi) + 32'(gj)))
                                 && (32'(t_cnt_q) <  (32'(gi) + 32'(gj) + cfg_k_dim));
                 assign clr_pe = en_pe && (t_cnt_q == (gi + gj));
