@@ -102,7 +102,7 @@ run_questasim() {
     OBI_DIR="$(cd "$SOC_DIR" && bender path obi)"
     SIM_FLIST="$(cd "$SOC_DIR" && bender script flist -t rtl -t vendor -t simulation -t tracer -t didactic_obi | tr '\n' ' ')"
 
-    MAKE_OVERRIDES="COMMON_CELLS_DIR='$COMMON_CELLS_DIR' AXI_DIR='$AXI_DIR' APB_DIR='$APB_DIR' REGIF_DIR='$REGIF_DIR' OBI_DIR='$OBI_DIR' SIM_FLIST='$SIM_FLIST'"
+    MAKE_OVERRIDES="COMMON_CELLS_DIR='$COMMON_CELLS_DIR' AXI_DIR='$AXI_DIR' APB_DIR='$APB_DIR' REGIF_DIR='$REGIF_DIR' OBI_DIR='$OBI_DIR' SIM_FLIST='$SIM_FLIST' DUT_DEFINES='${DUT_DEFINES:-}'"
 
     [ -f "$SIF" ] || { echo "ERROR: Container image not found: $SIF"; exit 1; }
 
