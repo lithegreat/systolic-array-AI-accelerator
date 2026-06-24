@@ -70,6 +70,27 @@ accel_verilator_sim:
   script:
     - ./sim/scripts/run_verilator.sh
 
+# pyuvm end-to-end test for accelerator_top: loads matrices A/B, triggers
+# compute, drains C, compares against a Python golden model.  Runs on the
+# same SIM_IMAGE (which includes pyuvm via requirements/sim.txt).
+accel_uvm_sim:
+  stage: sim
+  image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 8m
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &uvm_paths
+        - rtl/**/*
+        - sim/testbenches/accel_uvm/**/*
+        - sim/testbenches/common/**/*
+        - requirements/sim.txt
+        - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *uvm_paths
+  script:
+    - cd sim/testbenches/accel_uvm && make
+
 # ---------------------------------------------------------------------------
 # Full-SoC, bus-driven functional test: the Ibex core executes sw/accel/accel.c
 # and drives the accelerator through the real OBI/APB fabric (PASS when
