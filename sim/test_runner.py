@@ -14,9 +14,10 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# accel_uvm runs pyuvm tests and has its own dedicated CI job (accel_uvm_sim);
-# exclude it here to avoid double-running in the cocotb_sim CI job.
-_EXCLUDED = {"accel_uvm"}
+# accel_uvm runs pyuvm tests and has its own dedicated CI job (accel_uvm_sim).
+# accel_questa_uvm is a QuestaSim/UVM testbench requiring MTI_HOME (not cocotb).
+# Both are excluded here to avoid double-running in the cocotb_sim CI job.
+_EXCLUDED = {"accel_uvm", "accel_questa_uvm"}
 
 TESTBENCHES = sorted(
     p
