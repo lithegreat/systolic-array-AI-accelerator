@@ -166,9 +166,20 @@ def main() -> int:
     b_flat = b.reshape(-1)  # row-major B[k*N + j]
     c_flat = c.reshape(-1)  # row-major C[i*N + j]
 
+    suffix = cfg.name.split("_")[-1]  # e.g. "8x8" or "16x16"
+    is_default_out = args.out == OUT_PATH
+    target_out = (
+        args.out.parent / f"accel_gemm_data_{suffix}.h" if is_default_out else args.out
+    )
+    guard = (
+        f"__ACCEL_GEMM_DATA_{suffix.upper()}_H__"
+        if is_default_out
+        else "__ACCEL_GEMM_DATA_H__"
+    )
+
     header = f"""\
-#ifndef __ACCEL_GEMM_DATA_H__
-#define __ACCEL_GEMM_DATA_H__
+#ifndef {guard}
+#define {guard}
 
 #include <stdint.h>
 
@@ -208,16 +219,39 @@ static const {cfg.golden_ctype} accel_golden[ACC_M * ACC_N] = {{
 {fmt_rows(c_flat, cfg.n)}
 }};
 
-#endif /* __ACCEL_GEMM_DATA_H__ */
+#endif /* {guard} */
 """
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(header)
+    target_out.parent.mkdir(parents=True, exist_ok=True)
+    target_out.write_text(header)
     print(
-        f"wrote {args.out} "
+        f"wrote {target_out} "
         f"(variant {cfg.name}, case {args.case}, seed 0x{args.seed:X}, "
         f"{cfg.m}x{cfg.n}x{cfg.k}, DATA_W={cfg.data_w})"
     )
+
+    if is_default_out:
+        dispatcher_content = """\
+#ifndef __ACCEL_GEMM_DATA_H__
+#define __ACCEL_GEMM_DATA_H__
+
+#ifndef ACC_DIM
+#define ACC_DIM 16
+#endif
+
+#if ACC_DIM == 8
+#include "accel_gemm_data_8x8.h"
+#elif ACC_DIM == 16
+#include "accel_gemm_data_16x16.h"
+#else
+#error "Unsupported ACC_DIM value"
+#endif
+
+#endif /* __ACCEL_GEMM_DATA_H__ */
+"""
+        args.out.write_text(dispatcher_content)
+        print(f"wrote dispatcher wrapper {args.out}")
+
     return 0
 
 
