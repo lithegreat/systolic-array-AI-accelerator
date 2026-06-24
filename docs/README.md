@@ -34,6 +34,7 @@ docs/
 │   ├── completed/            # archived plans (kept for the decision log)
 │   └── tech-debt.md          # known technical debt register
 ├── guides/                   # how-to / workflow docs
+│   ├── benchmark.md          # GEMM benchmark guide & analysis
 │   ├── gitlab_workflow.md
 │   └── lab_server_examples.md
 ├── reference/                # platform & course reference material
