@@ -14,10 +14,15 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# accel_uvm runs pyuvm tests and has its own dedicated CI job (accel_uvm_sim).
+# accel_questa_uvm is a QuestaSim/UVM testbench requiring MTI_HOME (not cocotb).
+# Both are excluded here to avoid double-running in the cocotb_sim CI job.
+_EXCLUDED = {"accel_uvm", "accel_questa_uvm"}
+
 TESTBENCHES = sorted(
     p
     for p in (REPO_ROOT / "sim" / "testbenches").iterdir()
-    if p.is_dir() and (p / "Makefile").is_file()
+    if p.is_dir() and (p / "Makefile").is_file() and p.name not in _EXCLUDED
 )
 
 REQUIRES_VERILATOR = pytest.mark.skipif(
