@@ -103,6 +103,11 @@ def main() -> int:
                 # Link points outside the repo; ignore.
                 continue
             linked_targets.add(resolved_rel)
+            if (
+                resolved_rel.startswith("Didactic-SoC/")
+                and not (REPO_ROOT / "Didactic-SoC" / "Makefile").exists()
+            ):
+                continue
             if not resolved.exists():
                 errors.append(f"dead link in {rel(md)}: '{raw}'")
 
