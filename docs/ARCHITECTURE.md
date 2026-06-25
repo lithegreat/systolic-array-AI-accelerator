@@ -5,7 +5,7 @@
 > diving into any module; then follow the links into the
 > [interface contracts](interface/README.md) or the code.
 
-Last reviewed: 2026-06-15
+Last reviewed: 2026-06-24
 
 ## Bird's-eye view
 
