@@ -1,4 +1,6 @@
-cocotb>=1.8.0,<2.0
+cocotb>=2.0.0
 cocotb-test>=0.2.4
 pytest>=7.0
 numpy>=1.24
+pyuvm>=4.0.1
+pyvsc>=0.8.8

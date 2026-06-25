@@ -25,6 +25,7 @@ patches.
 | A module's ports / protocol (**source of truth**) | [docs/interface/](docs/interface/README.md) |
 | Plans, decision logs, tech debt | [docs/plans/](docs/plans/README.md) |
 | Build / run / lab procedures | [docs/guides/](docs/guides/) |
+| UVM testbench for `accelerator_top` | [docs/verification/accel_uvm_tb.md](docs/verification/accel_uvm_tb.md) |
 | Setup, milestones, team ownership | [README.md](README.md) |
 
 ## Operating loop

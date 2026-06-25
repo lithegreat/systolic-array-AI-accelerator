@@ -17,7 +17,7 @@ belongs in one of these files (not buried in a commit message or chat log).
 | Plans | [plans/README.md](plans/README.md) | First-class planning artifacts: active execution plans, completed plans with decision logs, and the tech-debt register. |
 | Guides | [guides/](guides/) | How-to workflow docs (GitLab/MR workflow, lab-server examples). |
 | Reference | [reference/](reference/) | Platform and course reference material (Didactic SoC platform, course kick-off). |
-| Verification | [verification/](verification/) | Verification and bring-up reports. |
+| Verification | [verification/](verification/) | Verification and bring-up reports; UVM testbench guide. |
 
 ## Directory layout
 
