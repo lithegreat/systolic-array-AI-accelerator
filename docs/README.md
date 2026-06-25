@@ -35,6 +35,7 @@ docs/
 │   └── tech-debt.md          # known technical debt register
 ├── guides/                   # how-to / workflow docs
 │   ├── benchmark.md          # GEMM benchmark guide & analysis
+│   ├── io_bottleneck_solutions.md  # comparative analysis of I/O bottleneck fixes
 │   ├── gitlab_workflow.md
 │   └── lab_server_examples.md
 ├── reference/                # platform & course reference material
