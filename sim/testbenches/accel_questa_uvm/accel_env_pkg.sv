@@ -333,6 +333,37 @@ package accel_env_pkg;
     endclass : accel_load_ab_seq
 
     // =========================================================================
+    // accel_setup_dims_seq  –  program M/N/K dimension registers
+    //
+    // Must be run BEFORE accel_load_ab_seq because the RTL's PSLVERR logic
+    // in matrix_buffer_ab checks  a_wrow_q >= cfg_m_dim  and
+    // b_wrow_q >= cfg_k_dim.  cfg_m_dim/cfg_k_dim default to 0 at reset,
+    // so any A/B data write would be rejected as SLVERR unless dimensions
+    // are programmed first.
+    // =========================================================================
+    class accel_setup_dims_seq extends accel_base_seq;
+        `uvm_object_utils(accel_setup_dims_seq)
+
+        int unsigned m = 4;
+        int unsigned n = 4;
+        int unsigned k = 4;
+
+        function new(string name = "accel_setup_dims_seq");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            do_write(ADDR_M_DIM, 32'(m));
+            do_write(ADDR_N_DIM, 32'(n));
+            do_write(ADDR_K_DIM, 32'(k));
+            `uvm_info("SETUP_DIMS",
+                $sformatf("Programmed dims: M=%0d N=%0d K=%0d", m, n, k),
+                UVM_MEDIUM)
+        endtask
+
+    endclass : accel_setup_dims_seq
+
+    // =========================================================================
     // accel_compute_seq  –  program dims, assert start, poll STATUS.done
     // =========================================================================
     class accel_compute_seq extends accel_base_seq;
