@@ -82,7 +82,7 @@ VLOG_OPTS := \
 # Elaboration / simulation options
 # ---------------------------------------------------------------------------
 VOPT_OPTS  := +acc tb_top -o tb_top_opt
-VSIM_OPTS  := -c -suppress 3009 -suppress 8386
+VSIM_OPTS  := -c -suppress 3009 -suppress 8386 -sv_lib $(MTI_HOME)/uvm-1.2/linux_x86_64/uvm_dpi
 
 # Default test; override on command line: make run TESTNAME=accel_zero_test
 TESTNAME ?= accel_random_test
