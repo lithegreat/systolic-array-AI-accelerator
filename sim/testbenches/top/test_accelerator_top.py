@@ -614,9 +614,7 @@ async def test_top_weight_reuse(dut) -> None:
     t0_start = cocotb.utils.get_sim_time(units="ns")
 
     # Select Bank 0 and reset pointers (normal mode, REUSE_B = 0)
-    await apb_write(
-        dut, AB_BASE | OFF_AB_CTRL, (0 << 5) | (0 << 4) | (0 << 3) | 0x01
-    )
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (0 << 5) | (0 << 4) | (0 << 3) | 0x01)
     await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
 
     # Write A0 and B0
@@ -651,13 +649,9 @@ async def test_top_weight_reuse(dut) -> None:
     t1_start = cocotb.utils.get_sim_time(units="ns")
 
     # Step 1: Set REUSE_B = 1 for Bank 0 (apb_bank = 0, sys_bank = 0)
-    await apb_write(
-        dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x00
-    )
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x00)
     # Step 2: Trigger reset pointers (bit 0 = 1). Since REUSE_B is active, B pointers will not reset.
-    await apb_write(
-        dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x01
-    )
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x01)
     # Reset read pointer in output buffer
     await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
 
@@ -698,5 +692,5 @@ async def test_top_weight_reuse(dut) -> None:
         f"Weight Reuse GEMM cycle count (Write A only + Compute + Read C): {cycles_reuse:.0f} cycles"
     )
     cocotb.log.info(
-        f"Cycle savings: {cycles_standard - cycles_reuse:.0f} cycles ({(cycles_standard - cycles_reuse)/cycles_standard*100:.1f}%)"
+        f"Cycle savings: {cycles_standard - cycles_reuse:.0f} cycles ({(cycles_standard - cycles_reuse) / cycles_standard * 100:.1f}%)"
     )
