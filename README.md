@@ -21,10 +21,12 @@ Module pin/protocol contracts live in [docs/interface/](docs/interface/README.md
   - [1. Standalone accelerator sim (fastest)](#1-standalone-accelerator-sim-fastest)
   - [2. cocotb regression + coverage](#2-cocotb-regression--coverage)
   - [3. Full-SoC functional sim (CPU in-loop, Verilator)](#3-full-soc-functional-sim-cpu-in-loop-verilator)
+  - [4. UVM testbenches](#4-uvm-testbenches)
 - [Run on the lab server](#run-on-the-lab-server)
   - [One-time lab setup](#one-time-lab-setup)
   - [QuestaSim flow (CPU in-loop)](#questasim-flow-cpu-in-loop)
   - [FPGA flow (PYNQ-Z1)](#fpga-flow-pynq-z1)
+  - [SV UVM (QuestaSim)](#sv-uvm-questasim)
 - [Project layout](#project-layout)
 - [Architecture at a glance](#architecture-at-a-glance)
 - [Contributing (GitLab workflow)](#contributing-gitlab-workflow)
@@ -148,6 +150,32 @@ Details and the
 QuestaSim bring-up notes are in
 [docs/verification/accelerator_soc_report.md](docs/verification/accelerator_soc_report.md).
 
+### 4. UVM testbenches
+
+Two UVM testbenches are provided, targeting different simulators:
+
+#### 4a. pyuvm (Verilator, local)
+
+A full UVM environment in Python — APB UVC, RAL register model, and
+constrained-random sequences — built on [pyuvm](https://pyuvm.github.io/pyuvm/)
+4.0.1 + cocotb. Runs on Verilator and requires no license.
+Full description: [docs/verification/accel_uvm_tb.md](docs/verification/accel_uvm_tb.md).
+
+```bash
+source .venv/bin/activate
+
+# Run all 4 UVM tests via pytest (same runner CI uses)
+pytest sim/test_runner.py -k accel_uvm -v
+
+# Or run directly from the testbench directory
+cd sim/testbenches/accel_uvm
+make              # all tests, default 16×16
+make M=8 N=8 K=8  # 8×8 tile
+```
+
+Expected: 4 tests pass (`AccelZeroTest`, `AccelIdentityTest`,
+`AccelCheckerboardTest`, `AccelRandomTest`).
+
 ## Run on the lab server
 
 The CPU-in-loop QuestaSim and FPGA flows run on the TUM lab server
@@ -220,6 +248,31 @@ cd Didactic-SoC/fpga && make load_elf TEST=accel    # in GDB: 'c' to run, Ctrl+C
 > and produces `DidacticZ1.bit`. Board bring-up notes (FT4232H serial,
 > `vid_pid 0x6011`, 25 MHz PLL, `z1.xdc` LED mapping) are in
 > [docs/guides/lab_server_examples.md](docs/guides/lab_server_examples.md).
+
+### SV UVM (QuestaSim)
+
+A SystemVerilog UVM 1.2 testbench with `apb_if` clocking blocks, RAL,
+scoreboard, and functional coverage. Full tutorial:
+[docs/verification/accel_questa_uvm_tutorial.md](docs/verification/accel_questa_uvm_tutorial.md).
+
+```bash
+# On lx01.clients.eikon.tum.de, from the repo root:
+bash sim/scripts/run_questa_uvm.sh                             # full regression (5 tests)
+bash sim/scripts/run_questa_uvm.sh --testname accel_zero_test  # single test
+bash sim/scripts/run_questa_uvm.sh --waves                     # GUI + waveforms
+```
+
+Or manually inside the apptainer container:
+
+```bash
+cd sim/testbenches/accel_questa_uvm
+make compile elaborate regress          # full flow
+make run TESTNAME=accel_random_test     # single test
+make waves TESTNAME=accel_zero_test     # GUI
+```
+
+Expected: 5 tests pass (`accel_zero_test`, `accel_identity_test`,
+`accel_checker_test`, `accel_random_test`, `accel_directed_test`).
 
 ## Project layout
 
