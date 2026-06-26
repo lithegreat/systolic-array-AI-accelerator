@@ -587,4 +587,3 @@ async def test_top_double_buffer_pipelined(dut) -> None:
     assert np.array_equal(got1, ref1), (
         f"Double buffer Bank 1 mismatch:\nref=\n{ref1}\ngot=\n{got1}"
     )
-
