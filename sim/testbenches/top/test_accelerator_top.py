@@ -118,7 +118,7 @@ async def apb_read(dut, addr: int) -> int:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk_in)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     val = int(dut.PRDATA.value)
     await RisingEdge(dut.clk_in)
     dut.PSEL.value = 0
@@ -241,7 +241,7 @@ async def run_submatmul(
 
 @cocotb.test()
 async def test_top_random_matmul(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     for trial, seed in enumerate(MULTI_SEEDS):
@@ -261,7 +261,7 @@ async def test_top_random_matmul(dut) -> None:
 
 @cocotb.test()
 async def test_top_edge_case_matrices(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     for case in EDGE_CASES:
@@ -277,7 +277,7 @@ async def test_top_edge_case_matrices(dut) -> None:
 
 @cocotb.test()
 async def test_top_compact_runtime_tiles(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     cases = [(1, 1, 1), (3, 5, 2), (min(7, M), min(6, N), min(4, K))]
@@ -296,7 +296,7 @@ async def test_top_compact_runtime_tiles(dut) -> None:
 
 @cocotb.test()
 async def test_top_identity(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     # Distinct A values constrained to the signed DATA_W range so they survive
@@ -312,7 +312,7 @@ async def test_top_identity(dut) -> None:
 @cocotb.test()
 async def test_top_4x4_matmul(dut) -> None:
     """4x4 matrix multiply on 16x16 HW via zero-padding, 8-bit inputs."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 4
@@ -332,7 +332,7 @@ async def test_top_4x4_matmul(dut) -> None:
 @cocotb.test()
 async def test_top_8x8_matmul(dut) -> None:
     """8x8 matrix multiply on 16x16 HW via zero-padding, 8-bit inputs."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 8
@@ -352,7 +352,7 @@ async def test_top_8x8_matmul(dut) -> None:
 @cocotb.test()
 async def test_top_4bit_inputs(dut) -> None:
     """16x16 matmul with 4-bit signed inputs sign-extended to 16-bit."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     rng = random.Random(0x0004)
@@ -369,7 +369,7 @@ async def test_top_4bit_inputs(dut) -> None:
 @cocotb.test()
 async def test_top_8bit_inputs(dut) -> None:
     """16x16 matmul with 8-bit signed inputs sign-extended to 16-bit."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     rng = random.Random(0x0008)
@@ -386,7 +386,7 @@ async def test_top_8bit_inputs(dut) -> None:
 @cocotb.test()
 async def test_top_4x4_4bit(dut) -> None:
     """4x4 matmul with 4-bit inputs on 16x16 HW."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 4
@@ -401,7 +401,7 @@ async def test_top_4x4_4bit(dut) -> None:
 @cocotb.test()
 async def test_top_8x8_4bit(dut) -> None:
     """8x8 matmul with 4-bit inputs on 16x16 HW."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 8
@@ -420,7 +420,7 @@ REG_INT_STAT = 0x14
 @cocotb.test()
 async def test_top_irq_path(dut) -> None:
     """Exercise irq_en_4/ss_ctrl_4/irq_4 toggle and the interrupt register path."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     # Drive ss_ctrl_4 to a non-zero value (toggles the port).
@@ -463,7 +463,7 @@ async def test_top_unmapped_region(dut) -> None:
     PADDR[9:8]==2'b11 (e.g. 0x300) matches no subordinate; the top-level
     decoder must still assert PREADY (and PSLVERR) so the bus does not hang.
     """
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     unmapped = 0x300
@@ -475,7 +475,7 @@ async def test_top_unmapped_region(dut) -> None:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk_in)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     assert int(dut.PREADY.value) == 1, "PREADY must be high for unmapped read"
     assert int(dut.PSLVERR.value) == 1, "PSLVERR must flag unmapped read"
     await RisingEdge(dut.clk_in)
@@ -490,7 +490,7 @@ async def test_top_unmapped_region(dut) -> None:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk_in)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     assert int(dut.PREADY.value) == 1, "PREADY must be high for unmapped write"
     assert int(dut.PSLVERR.value) == 1, "PSLVERR must flag unmapped write"
     await RisingEdge(dut.clk_in)
@@ -502,7 +502,7 @@ async def test_top_unmapped_region(dut) -> None:
 @cocotb.test()
 async def test_top_double_buffer_pipelined(dut) -> None:
     """Pipelined execution of two matrix multiplications using double buffering."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     rng = random.Random(0xDBBF)

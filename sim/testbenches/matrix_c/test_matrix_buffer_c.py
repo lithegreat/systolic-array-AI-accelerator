@@ -28,7 +28,7 @@ async def apb_read_sample_error(dut, addr: int) -> tuple[int, int, int]:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     data = int(dut.PRDATA.value)
     ready = int(dut.PREADY.value)
     err = int(dut.PSLVERR.value)
@@ -66,7 +66,7 @@ async def reset_dut(dut) -> None:
 
 @cocotb.test()
 async def test_capture_then_readout(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -100,7 +100,7 @@ async def test_capture_then_readout(dut) -> None:
 @cocotb.test()
 async def test_ctrl_read_capture_full_flag(dut) -> None:
     """Read CTRL register: full flag (bit 1) should be 0 initially, 1 after M row captures."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -134,7 +134,7 @@ async def test_ctrl_read_capture_full_flag(dut) -> None:
 
 @cocotb.test()
 async def test_reset_pointer_via_ctrl(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -162,7 +162,7 @@ async def test_reset_pointer_via_ctrl(dut) -> None:
 
 @cocotb.test()
 async def test_overread_sets_pslverr(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -186,7 +186,7 @@ async def test_overread_sets_pslverr(dut) -> None:
 @cocotb.test()
 async def test_read_past_end_returns_slverr(dut) -> None:
     """Reading beyond M*N elements must assert PSLVERR."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -210,7 +210,7 @@ async def test_read_past_end_returns_slverr(dut) -> None:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     assert int(dut.PSLVERR.value) == 1, "PSLVERR should be 1 on read past end"
     # Data should return 0 on overflow read.
     assert int(dut.PRDATA.value) == 0, "PRDATA should be 0 on overflow read"
@@ -221,7 +221,7 @@ async def test_read_past_end_returns_slverr(dut) -> None:
 
 @cocotb.test()
 async def test_extra_capture_ignored_after_full(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -247,7 +247,7 @@ async def test_extra_capture_ignored_after_full(dut) -> None:
 @cocotb.test()
 async def test_double_capture_overwrites(dut) -> None:
     """Capturing a second batch of rows overwrites the first in the memory."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -282,7 +282,7 @@ async def test_double_capture_overwrites(dut) -> None:
 
 @cocotb.test()
 async def test_runtime_compact_capture_and_readback(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
@@ -318,7 +318,7 @@ async def test_runtime_compact_capture_and_readback(dut) -> None:
 @cocotb.test()
 async def test_capture_interleaved_with_read(dut) -> None:
     """Capture partial rows, read some elements, capture remaining, read all."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     apb = ApbMaster(dut)
 
