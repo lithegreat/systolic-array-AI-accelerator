@@ -62,9 +62,10 @@ module matrix_buffer_ab
     logic [K_W-1:0] b_wrow_q [2];
     logic [N_W-1:0] b_wcol_q [2];
 
-    // Bank selection registers
+    // Bank selection and control registers
     logic apb_bank_q; // Selected bank for APB writes
     logic sys_bank_q; // Selected bank for streaming to systolic array
+    logic reuse_b_q [2]; // Reuse B flag per bank
 
     // -------------------------------------------------------------------------
     // APB transaction qualifier
@@ -157,21 +158,25 @@ module matrix_buffer_ab
                 a_wcol_q[b] <= '0;
                 b_wrow_q[b] <= '0;
                 b_wcol_q[b] <= '0;
+                reuse_b_q[b] <= 1'b0;
             end
             apb_bank_q <= 1'b0;
             sys_bank_q <= 1'b0;
         end else begin
-            // Bank selection updates via CTRL register
+            // Bank selection and control updates via CTRL register
             if (apb_access && PWRITE && sel_ctrl) begin
                 apb_bank_q <= PWDATA[3];
                 sys_bank_q <= PWDATA[4];
+                reuse_b_q[PWDATA[3]] <= PWDATA[5];
             end
 
             if (ctrl_reset_ptrs) begin
                 a_wrow_q[apb_bank_q] <= '0;
                 a_wcol_q[apb_bank_q] <= '0;
-                b_wrow_q[apb_bank_q] <= '0;
-                b_wcol_q[apb_bank_q] <= '0;
+                if (!reuse_b_q[apb_bank_q]) begin
+                    b_wrow_q[apb_bank_q] <= '0;
+                    b_wcol_q[apb_bank_q] <= '0;
+                end
             end else begin
                 if (apb_access && PWRITE && sel_a) begin
                     if (APB_DW'(a_wrow_q[apb_bank_q]) < cfg_m_dim) begin
@@ -209,6 +214,7 @@ module matrix_buffer_ab
             PRDATA[2] = (APB_DW'(b_wrow_q[apb_bank_q]) >= cfg_k_dim);
             PRDATA[3] = apb_bank_q;
             PRDATA[4] = sys_bank_q;
+            PRDATA[5] = reuse_b_q[apb_bank_q];
         end
     end
 
