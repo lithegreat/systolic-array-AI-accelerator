@@ -282,47 +282,49 @@ package accel_env_pkg;
             // Reset A/B write pointers
             do_write(ADDR_AB_CTRL, 32'h1);
 
-            // Write A (row-major, packed)
-            words = a_flat.size() / per_word;
-            for (int i = 0; i < words; i++) begin
-                word = '0;
-                case (data_w)
-                    16: begin
-                        word[15:0]  = a_flat[i*2];
-                        word[31:16] = a_flat[i*2+1];
-                    end
-                    8: begin
-                        word[ 7: 0] = a_flat[i*4  ][7:0];
-                        word[15: 8] = a_flat[i*4+1][7:0];
-                        word[23:16] = a_flat[i*4+2][7:0];
-                        word[31:24] = a_flat[i*4+3][7:0];
-                    end
-                    32: word = a_flat[i];
-                    default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
-                endcase
-                do_write(ADDR_A_DATA, word);
-            end
-
-            // Write B (row-major, packed)
-            words = b_flat.size() / per_word;
-            for (int i = 0; i < words; i++) begin
-                word = '0;
-                case (data_w)
-                    16: begin
-                        word[15:0]  = b_flat[i*2];
-                        word[31:16] = b_flat[i*2+1];
-                    end
-                    8: begin
-                        word[ 7: 0] = b_flat[i*4  ][7:0];
-                        word[15: 8] = b_flat[i*4+1][7:0];
-                        word[23:16] = b_flat[i*4+2][7:0];
-                        word[31:24] = b_flat[i*4+3][7:0];
-                    end
-                    32: word = b_flat[i];
-                    default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
-                endcase
-                do_write(ADDR_B_DATA, word);
-            end
+             // Write A (row-major, packed)
+             words = (a_flat.size() + per_word - 1) / per_word;
+             for (int i = 0; i < words; i++) begin
+                 word = '0;
+                 case (data_w)
+                     16: begin
+                         word[15:0]  = a_flat[i*2];
+                         if (i*2+1 < a_flat.size())
+                             word[31:16] = a_flat[i*2+1];
+                     end
+                     8: begin
+                         word[ 7: 0] = a_flat[i*4  ][7:0];
+                         if (i*4+1 < a_flat.size()) word[15: 8] = a_flat[i*4+1][7:0];
+                         if (i*4+2 < a_flat.size()) word[23:16] = a_flat[i*4+2][7:0];
+                         if (i*4+3 < a_flat.size()) word[31:24] = a_flat[i*4+3][7:0];
+                     end
+                     32: word = a_flat[i];
+                     default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
+                 endcase
+                 do_write(ADDR_A_DATA, word);
+             end
+ 
+             // Write B (row-major, packed)
+             words = (b_flat.size() + per_word - 1) / per_word;
+             for (int i = 0; i < words; i++) begin
+                 word = '0;
+                 case (data_w)
+                     16: begin
+                         word[15:0]  = b_flat[i*2];
+                         if (i*2+1 < b_flat.size())
+                             word[31:16] = b_flat[i*2+1];
+                     end
+                     8: begin
+                         word[ 7: 0] = b_flat[i*4  ][7:0];
+                         if (i*4+1 < b_flat.size()) word[15: 8] = b_flat[i*4+1][7:0];
+                         if (i*4+2 < b_flat.size()) word[23:16] = b_flat[i*4+2][7:0];
+                         if (i*4+3 < b_flat.size()) word[31:24] = b_flat[i*4+3][7:0];
+                     end
+                     32: word = b_flat[i];
+                     default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
+                 endcase
+                 do_write(ADDR_B_DATA, word);
+             end
 
             `uvm_info("LOAD_AB",
                 $sformatf("Loaded A[%0d] B[%0d] (DATA_W=%0d, %0d elem/word)",
