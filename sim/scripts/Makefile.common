@@ -16,7 +16,11 @@ COMMON_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 REPO_ROOT  := $(abspath $(COMMON_DIR)/../..)
 
 # Always include the shared package directory.
+ifeq ($(SIM),questa)
+COMPILE_ARGS += +incdir+$(REPO_ROOT)/rtl/include
+else
 COMPILE_ARGS += -I$(REPO_ROOT)/rtl/include
+endif
 
 # Verilator-specific tweaks: enable trace, ignore harmless lints from package
 # imports, allow signed arithmetic warnings.
