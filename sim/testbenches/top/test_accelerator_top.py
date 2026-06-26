@@ -497,3 +497,90 @@ async def test_top_unmapped_region(dut) -> None:
     dut.PSEL.value = 0
     dut.PENABLE.value = 0
     dut.PWRITE.value = 0
+
+
+@cocotb.test()
+async def test_top_double_buffer_pipelined(dut) -> None:
+    """Pipelined execution of two matrix multiplications using double buffering."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    await reset_top(dut)
+
+    rng = random.Random(0xDBBF)
+    a0 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+    b0 = random_matrix(K, N, DATA_W, rng).astype(np.int64)
+    ref0 = matmul_ref(a0, b0, ACC_W)
+
+    a1 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+    b1 = random_matrix(K, N, DATA_W, rng).astype(np.int64)
+    ref1 = matmul_ref(a1, b1, ACC_W)
+
+    # 1. Program physical dimensions
+    await apb_write(dut, CTRL_BASE | REG_M_DIM, M)
+    await apb_write(dut, CTRL_BASE | REG_N_DIM, N)
+    await apb_write(dut, CTRL_BASE | REG_K_DIM, K)
+
+    # 2. Select Bank 0 for APB writes on matrix_buffer_ab and reset bank 0 pointers
+    # Bit 3 = apb_bank, Bit 4 = sys_bank, Bit 0 = reset pointers
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (0 << 4) | (0 << 3) | 0x01)
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
+
+    # 3. Write Matrix A0 and B0 to Bank 0
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a0.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b0.flatten()))
+
+    # 4. Start computation on Bank 0
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # 5. While Bank 0 is computing, switch APB to Bank 1 and write A1 and B1
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (0 << 4) | (1 << 3) | 0x01)
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a1.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b1.flatten()))
+
+    # 6. Wait for Bank 0 computation to finish
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Bank 0 compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # 7. Start computation on Bank 1, and map C output to sys_bank = 1
+    # For matrix_buffer_ab: sys_bank = 1, apb_bank = 1
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (1 << 4) | (1 << 3) | 0x00)
+    # For matrix_buffer_c: sys_bank = 1, apb_bank = 0 (we read C0 from bank 0) and reset bank 1
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (1 << 4) | (0 << 3) | 0x01)
+    # Start compute
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # 8. While Bank 1 is computing, read back C0 from Bank 0
+    got0 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got0[i, j] = to_signed(word, 32)
+
+    # 9. Wait for Bank 1 computation to finish
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Bank 1 compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # 10. Switch APB to read C1 from Bank 1
+    # matrix_buffer_c: sys_bank = 1, apb_bank = 1
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (1 << 4) | (1 << 3) | 0x00)
+
+    # 11. Read back C1
+    got1 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got1[i, j] = to_signed(word, 32)
+
+    # 12. Verify both results
+    assert np.array_equal(got0, ref0), f"Double buffer Bank 0 mismatch:\nref=\n{ref0}\ngot=\n{got0}"
+    assert np.array_equal(got1, ref1), f"Double buffer Bank 1 mismatch:\nref=\n{ref1}\ngot=\n{got1}"
+
