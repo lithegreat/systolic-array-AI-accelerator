@@ -101,20 +101,41 @@ package accel_tests_pkg;
             input int unsigned        n,
             input int unsigned        k
         );
-            accel_load_ab_seq  load_seq;
-            accel_compute_seq  comp_seq;
+            accel_setup_dims_seq dim_seq;
+            accel_load_ab_seq    load_seq;
+            accel_compute_seq    comp_seq;
 
+            // 1. Program dimensions BEFORE loading data.
+            //    RTL rejects A/B writes with SLVERR when cfg_m_dim=0 (reset).
+            dim_seq   = accel_setup_dims_seq::type_id::create("dim_seq");
+            dim_seq.m = m;
+            dim_seq.n = n;
+            dim_seq.k = k;
+            dim_seq.start(env.agent.seqr);
+
+            // 2. Reset pointers and stream A/B data
             load_seq        = accel_load_ab_seq::type_id::create("load_seq");
             load_seq.a_flat = a_flat;
             load_seq.b_flat = b_flat;
             load_seq.data_w = DATA_W;
             load_seq.start(env.agent.seqr);
 
+            // 3. Start compute and poll for completion
             comp_seq   = accel_compute_seq::type_id::create("comp_seq");
             comp_seq.m = m;
             comp_seq.n = n;
             comp_seq.k = k;
             comp_seq.start(env.agent.seqr);
+
+            // 4. Read C results — the scoreboard triggers its GEMM comparison
+            //    reactively when it observes M*N reads from the C data region.
+            begin
+                accel_read_c_seq read_seq;
+                read_seq   = accel_read_c_seq::type_id::create("read_seq");
+                read_seq.m = m;
+                read_seq.n = n;
+                read_seq.start(env.agent.seqr);
+            end
         endtask
 
     endclass : accel_base_test
