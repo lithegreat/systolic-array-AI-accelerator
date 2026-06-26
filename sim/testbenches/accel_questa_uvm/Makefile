@@ -151,7 +151,7 @@ run: elaborate
 	    tb_top_opt \
 	    -sv_seed random \
 	    +UVM_TESTNAME=$(TESTNAME) \
-	    +UVM_VERBOSITY=UVM_MEDIUM \
+	    +UVM_VERBOSITY=UVM_HIGH \
 	    +UVM_MAX_QUIT_COUNT=1 \
 	    -do "coverage save -onexit ucdb/$(TESTNAME).ucdb; run -all; quit -f" \
 	    -l log/$(TESTNAME).log
@@ -177,7 +177,7 @@ regress: elaborate
 	        tb_top_opt \
 	        -sv_seed random \
 	        +UVM_TESTNAME=$$t \
-	        +UVM_VERBOSITY=UVM_MEDIUM \
+	        +UVM_VERBOSITY=UVM_HIGH \
 	        +UVM_MAX_QUIT_COUNT=1 \
 	        -do "coverage save -onexit ucdb/$$t.ucdb; run -all; quit -f" \
 	        -l log/$$t.log; \
