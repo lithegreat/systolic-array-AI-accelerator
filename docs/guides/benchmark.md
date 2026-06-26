@@ -4,32 +4,41 @@
 > bare Ibex core against the same computation offloaded to the systolic-array
 > accelerator via APB, running inside the Didactic SoC.
 
-Last reviewed: 2026-06-24
+Last reviewed: 2026-06-26
 
 ## What is measured
 
 | Path | Description |
 |---|---|
 | **CPU only** | Naive triple-loop `O(M·N·K)` GEMM on Ibex. `int32_t` accumulation — same wrap semantics as the hardware MAC. |
-| **CPU + Accelerator** | Tiled GEMM driver (`accel_run_tiled_gemm`) streams tiles over APB to the 16×16 systolic array and collects results. Includes APB overhead. |
+| **CPU + Accelerator** | Tiled GEMM driver (`accel_run_tiled_gemm`) streams one full tile over APB to the 16×16 systolic array and collects results. Includes APB overhead. |
 
-Timing uses the RISC-V **`mcycle`** CSR (increments every clock, 100 MHz on this
-SoC). Both paths are verified element-wise against the same golden reference
-(`accel_golden[]` from `accel_gemm_data.h`).
+Timing is derived from the **Ibex instruction trace** emitted by Verilator
+(`trace_core_00000000.log`). The runner script (`verilate_soc_benchmark.py`)
+annotates the trace with hardware perf-counter values from the UART output.
 
 ## UART output
 
 ```
 benchmark: start
-<N> inner iters  <N> cyc (est)  <- cpu gemm
-<N> cyc  <- hw (accel only, from REG_PERF_CYCLES)
-speedup: <int>.<2 decimals>x
+compute: <N> cyc  (REG_PERF_CYCLES, accel)
+bus:     <N> cyc  (<wr> wr + <rd> rd) x2
 benchmark: PASS
 ```
 
-`hw` cycles is the accelerator's own performance counter (`REG_PERF_CYCLES`),
-i.e. clock cycles consumed inside the accelerator hardware — excluding APB
-overhead.
+The runner script additionally prints a wall-clock breakdown derived from
+the Ibex trace:
+
+```
+--- Wall-clock breakdown (Ibex trace) ---
+  CPU  GEMM:   <N> cyc  (first→last store to cpu_out[])
+  Accel path:  <N> cyc  (accel_run_tiled_gemm entry → return to main)
+    compute:   <N> cyc  (REG_PERF_CYCLES, systolic array)
+    bus:       <N> cyc  (APB transactions x2)
+    SW overhead:<N> cyc  (loop control, packing, accumulation)
+  Speedup:         X.XXx  (CPU GEMM / Accel wall-clock)
+-----------------------------------------
+```
 
 ## Result code in `bench_result`
 
@@ -51,69 +60,103 @@ overhead.
 
 ## How to run
 
-### 1 — Build the RISC-V firmware
-
-From the **`Didactic-SoC/`** directory (requires the `riscv32-unknown-elf-gcc`
-toolchain and `elf2hex` on `PATH`):
+All commands run from **`Didactic-SoC/`**. Each `make` target builds the
+firmware, copies the hex, and runs the simulation in one step.
 
 ```bash
-cd Didactic-SoC
-make build_test TESTCASE=benchmark   # compiles + links benchmark.elf
-make hex_test  TESTCASE=benchmark    # converts to the hex format Ibex loads
-
-# Copy or symlink the hex into the verilator directory
-cp build/sw/benchmark.hex verification/verilator/benchmark.hex
+source ../.venv/bin/activate   # colorama required by the runner
+export PATH=$HOME/.local/xPacks/@xpack-dev-tools/riscv-none-elf-gcc/15.2.0-1.1/.content/bin:$PATH
 ```
 
-### 2 — Run the Verilator simulation
+### 16×16 benchmark (full hardware utilisation)
+
+Matches the hardware dimensions (M=N=K=16, INT8). One tile covers the entire
+GEMM — minimum APB traffic, minimum SW overhead.
 
 ```bash
-# From Didactic-SoC/
-make verilate_benchmark
-# or directly:
-python3 ./verification/verilator/verilate_soc_benchmark.py
+make verilate_benchmark        # default — same as verilate_benchmark_16
+make verilate_benchmark_16     # explicit
 ```
 
-The simulation boots Ibex, executes the benchmark firmware, and exits.
-Cycle counts and speedup are printed to stdout via the simulated UART.
+### 8×8 benchmark (partial hardware utilisation)
 
-### 3 — Speed up on a roomy host
+Sends only 8×8×8 sub-matrices to the hardware (`REG_M/N/K_DIM = 8`). Useful
+for comparing speedup as a function of problem size. Skips the build-info
+check because the firmware dimensions intentionally differ from the hardware
+parameters.
 
-The default uses one parallel job to fit the constrained CI runner:
+```bash
+make verilate_benchmark_8
+```
+
+### Run both back-to-back
+
+```bash
+make verilate_benchmark_16
+make verilate_benchmark_8
+```
+
+### Speed up on a roomy host
 
 ```bash
 VERILATOR_JOBS=4 make verilate_benchmark
 ```
 
+> Override the toolchain prefix if needed:
+> `make verilate_benchmark BENCH_CC_PREFIX=riscv32-unknown-elf`
+
+> Override the toolchain prefix if needed:
+> `make verilate_benchmark BENCH_CC_PREFIX=riscv32-unknown-elf`
+
 ## Interpreting results
 
-* **`hw_cycles`** isolates the accelerator compute time (no APB overhead).
-* **`accel gemm` total cycles** include tile setup/teardown and APB
-  transactions — this is the end-to-end wall-clock cost as seen by software.
-* The printed **speedup** is `cpu_cycles / accel_total_cycles` (integer part +
-  2 decimal digits).  Expect the speedup to grow with matrix size because the
-  systolic array amortizes the fixed APB setup cost over more compute.
+* **`compute`** isolates the systolic-array hardware time (`REG_PERF_CYCLES`, START→DONE).
+* **`bus`** is `(APB_writes + APB_reads) × 2` — each APB transaction takes exactly
+  2 cycles (PREADY=1 on this design).
+* **`SW overhead`** is the remainder: Ibex cycles spent in loop control, INT8
+  packing, and C read-back — _not_ stalled on APB or waiting for compute.
+* **Speedup** scales super-linearly with matrix size: CPU work grows as O(n³)
+  while APB traffic and SW overhead grow as O(n²), so larger matrices yield
+  higher speedup.
 
-> [!NOTE]
-> The benchmark uses the fixed 16×16 INT8 test vectors from
-> `accel_gemm_data.h` (generated by `sim/common/c_code/gen_accel_data.py`).
-> To benchmark a different size, regenerate the data header with a different
-> variant and rebuild.
+## Benchmark Results (Verilator, 2026-06-26)
 
-## Benchmark Results & Performance Analysis
+### 16×16 INT8 (one tile, full hardware)
 
-Running the benchmark for the default **16×16 INT8** configuration on the Verilator simulation yields the following performance metrics:
+```
+compute:      64 cyc   (systolic array, single 16×16×16 tile)
+bus:         800 cyc   (134 wr + 266 rd) × 2
+SW overhead: 7891 cyc  (loop control, packing, C read-back)
+Accel path:  8755 cyc
+CPU GEMM:   84780 cyc
+Speedup:      9.68×
+```
 
-* **CPU Naive GEMM (estimated body compute):** 32,768 cycles (4,096 inner-loop body iterations × 8 cycles/iteration body estimate)
-* **Systolic Array Core Compute (`hw` counter):** 32 cycles
-* **Core-to-Core Isolated Speedup:** **1024.00×**
+### 8×8 INT8 (one tile, partial hardware)
 
-### Real-World Speedup and the I/O Bottleneck
+```
+compute:      32 cyc   (systolic array, single 8×8×8 tile)
+bus:         216 cyc   (38 wr + 70 rd) × 2
+SW overhead: 2456 cyc  (loop control, packing, C read-back)
+Accel path:  2704 cyc
+CPU GEMM:   10878 cyc
+Speedup:      4.02×
+```
 
-While the systolic-array hardware executes the GEMM multiplication in only **32 cycles**, the system-level wall-clock execution time (end-to-end simulation time) tells a different story:
+### Scaling analysis
 
-* **CPU-only total simulation run:** ~113,950 cycles
-* **CPU + Accelerator total simulation run (end-to-end):** ~59,503 cycles
-* **Real-world System Speedup:** **1.92×**
+| Metric | 8×8 | 16×16 | Ratio |
+|---|---|---|---|
+| Speedup | 4.02× | **9.68×** | 2.41× |
+| CPU GEMM | 10878 | 84780 | 7.79× ≈ 8× (O(n³)) |
+| Accel path | 2704 | 8755 | 3.24× ≈ 4× (O(n²)) |
+| bus | 216 | 800 | 3.70× |
+| SW overhead | 2456 | 7891 | 3.21× |
 
-This discrepancy indicates that **99.95%** of the accelerator path's execution time is spent on I/O overhead—manually streaming matrix tiles and reading back results word-by-word over the APB register-access interface. To achieve higher system-level speedup, integration of a DMA or block-transfer mechanism would be required to eliminate this I/O bottleneck.
+CPU work grows O(n³) while the accelerator path grows O(n²) — this is why
+the speedup improves from 4× to 9.7× when doubling the matrix dimension.
+
+> **Remaining bottleneck:** SW overhead dominates the accel path (90% at 8×8,
+> 90% at 16×16). The hard floor with APB and no DMA is ~800 cycles for
+> 16×16 (bus alone). See [io_bottleneck_solutions.md](io_bottleneck_solutions.md)
+> for the roadmap to eliminate it.
