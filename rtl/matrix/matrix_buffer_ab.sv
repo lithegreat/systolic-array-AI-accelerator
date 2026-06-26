@@ -52,15 +52,19 @@ module matrix_buffer_ab
     localparam int unsigned A_COL_IDX_W   = (K > 1) ? $clog2(K) : 1;
     localparam int unsigned B_ROW_IDX_W   = (K > 1) ? $clog2(K) : 1;
 
-    // Storage banks - 2D Partitioned Array
-    logic [DATA_W-1:0] mem_a [M][K];
-    logic [DATA_W-1:0] mem_b [K][N];
+    // Storage banks - 2D Partitioned Arrays for Bank 0 and Bank 1
+    logic [DATA_W-1:0] mem_a [2][M][K];
+    logic [DATA_W-1:0] mem_b [2][K][N];
 
-    // Write pointers (2D counters)
-    logic [M_W-1:0] a_wrow_q;
-    logic [K_W-1:0] a_wcol_q;
-    logic [K_W-1:0] b_wrow_q;
-    logic [N_W-1:0] b_wcol_q;
+    // Write pointers (2D counters) for Bank 0 and Bank 1
+    logic [M_W-1:0] a_wrow_q [2];
+    logic [K_W-1:0] a_wcol_q [2];
+    logic [K_W-1:0] b_wrow_q [2];
+    logic [N_W-1:0] b_wcol_q [2];
+
+    // Bank selection registers
+    logic apb_bank_q; // Selected bank for APB writes
+    logic sys_bank_q; // Selected bank for streaming to systolic array
 
     // -------------------------------------------------------------------------
     // APB transaction qualifier
@@ -77,8 +81,8 @@ module matrix_buffer_ab
 
     // Flag writes that would push past a bank's capacity
     assign PSLVERR    = apb_access && PWRITE &&
-                        ((sel_a && (APB_DW'(a_wrow_q) >= cfg_m_dim)) ||
-                         (sel_b && (APB_DW'(b_wrow_q) >= cfg_k_dim)));
+                        ((sel_a && (APB_DW'(a_wrow_q[apb_bank_q]) >= cfg_m_dim)) ||
+                         (sel_b && (APB_DW'(b_wrow_q[apb_bank_q]) >= cfg_k_dim)));
 
     // -------------------------------------------------------------------------
     // Sequential 2D Write Pointer Incrementers (No multiplication/division)
@@ -91,8 +95,8 @@ module matrix_buffer_ab
     always_comb begin
         a_wrow_d = '{default: '0};
         a_wcol_d = '{default: '0};
-        a_wrow_d[0] = a_wrow_q;
-        a_wcol_d[0] = a_wcol_q;
+        a_wrow_d[0] = a_wrow_q[apb_bank_q];
+        a_wcol_d[0] = a_wcol_q[apb_bank_q];
         for (int e = 1; e < EPW; e++) begin
             if (a_wcol_d[e-1] == cfg_k_dim[K_W-1:0] - 1'b1) begin
                 a_wcol_d[e] = '0;
@@ -120,8 +124,8 @@ module matrix_buffer_ab
     always_comb begin
         b_wrow_d = '{default: '0};
         b_wcol_d = '{default: '0};
-        b_wrow_d[0] = b_wrow_q;
-        b_wcol_d[0] = b_wcol_q;
+        b_wrow_d[0] = b_wrow_q[apb_bank_q];
+        b_wcol_d[0] = b_wcol_q[apb_bank_q];
         for (int e = 1; e < EPW; e++) begin
             if (b_wcol_d[e-1] == cfg_n_dim[N_W-1:0] - 1'b1) begin
                 b_wcol_d[e] = '0;
@@ -148,35 +152,45 @@ module matrix_buffer_ab
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            a_wrow_q <= '0;
-            a_wcol_q <= '0;
-            b_wrow_q <= '0;
-            b_wcol_q <= '0;
+            for (int b = 0; b < 2; b++) begin
+                a_wrow_q[b] <= '0;
+                a_wcol_q[b] <= '0;
+                b_wrow_q[b] <= '0;
+                b_wcol_q[b] <= '0;
+            end
+            apb_bank_q <= 1'b0;
+            sys_bank_q <= 1'b0;
         end else begin
+            // Bank selection updates via CTRL register
+            if (apb_access && PWRITE && sel_ctrl) begin
+                apb_bank_q <= PWDATA[3];
+                sys_bank_q <= PWDATA[4];
+            end
+
             if (ctrl_reset_ptrs) begin
-                a_wrow_q <= '0;
-                a_wcol_q <= '0;
-                b_wrow_q <= '0;
-                b_wcol_q <= '0;
+                a_wrow_q[apb_bank_q] <= '0;
+                a_wcol_q[apb_bank_q] <= '0;
+                b_wrow_q[apb_bank_q] <= '0;
+                b_wcol_q[apb_bank_q] <= '0;
             end else begin
                 if (apb_access && PWRITE && sel_a) begin
-                    if (APB_DW'(a_wrow_q) < cfg_m_dim) begin
+                    if (APB_DW'(a_wrow_q[apb_bank_q]) < cfg_m_dim) begin
                         for (int e = 0; e < EPW; e++) begin
                             if (APB_DW'(a_wrow_d[e]) < cfg_m_dim)
-                                mem_a[a_wrow_d[e]][a_wcol_d[e]] <= PWDATA[e*DATA_W +: DATA_W];
+                                mem_a[apb_bank_q][a_wrow_d[e]][a_wcol_d[e]] <= PWDATA[e*DATA_W +: DATA_W];
                         end
-                        a_wrow_q <= next_a_wrow;
-                        a_wcol_q <= next_a_wcol;
+                        a_wrow_q[apb_bank_q] <= next_a_wrow;
+                        a_wcol_q[apb_bank_q] <= next_a_wcol;
                     end
                 end
                 if (apb_access && PWRITE && sel_b) begin
-                    if (APB_DW'(b_wrow_q) < cfg_k_dim) begin
+                    if (APB_DW'(b_wrow_q[apb_bank_q]) < cfg_k_dim) begin
                         for (int e = 0; e < EPW; e++) begin
                             if (APB_DW'(b_wrow_d[e]) < cfg_k_dim)
-                                mem_b[b_wrow_d[e]][b_wcol_d[e]] <= PWDATA[e*DATA_W +: DATA_W];
+                                mem_b[apb_bank_q][b_wrow_d[e]][b_wcol_d[e]] <= PWDATA[e*DATA_W +: DATA_W];
                         end
-                        b_wrow_q <= next_b_wrow;
-                        b_wcol_q <= next_b_wcol;
+                        b_wrow_q[apb_bank_q] <= next_b_wrow;
+                        b_wcol_q[apb_bank_q] <= next_b_wcol;
                     end
                 end
             end
@@ -191,8 +205,10 @@ module matrix_buffer_ab
     always_comb begin
         PRDATA = '0;
         if (apb_access && !PWRITE && sel_ctrl) begin
-            PRDATA[1] = (APB_DW'(a_wrow_q) >= cfg_m_dim);
-            PRDATA[2] = (APB_DW'(b_wrow_q) >= cfg_k_dim);
+            PRDATA[1] = (APB_DW'(a_wrow_q[apb_bank_q]) >= cfg_m_dim);
+            PRDATA[2] = (APB_DW'(b_wrow_q[apb_bank_q]) >= cfg_k_dim);
+            PRDATA[3] = apb_bank_q;
+            PRDATA[4] = sys_bank_q;
         end
     end
 
@@ -238,11 +254,11 @@ module matrix_buffer_ab
     generate
         for (gi = 0; gi < M; gi++) begin : g_a_drive
             assign a_col[(gi+1)*DATA_W-1 -: DATA_W] =
-                (APB_DW'(gi) < cfg_m_dim) ? mem_a[gi][k_q[A_COL_IDX_W-1:0]] : '0;
+                (APB_DW'(gi) < cfg_m_dim) ? mem_a[sys_bank_q][gi][k_q[A_COL_IDX_W-1:0]] : '0;
         end
         for (gj = 0; gj < N; gj++) begin : g_b_drive
             assign b_row[(gj+1)*DATA_W-1 -: DATA_W] =
-                (APB_DW'(gj) < cfg_n_dim) ? mem_b[k_q[B_ROW_IDX_W-1:0]][gj] : '0;
+                (APB_DW'(gj) < cfg_n_dim) ? mem_b[sys_bank_q][k_q[B_ROW_IDX_W-1:0]][gj] : '0;
         end
     endgenerate
 
