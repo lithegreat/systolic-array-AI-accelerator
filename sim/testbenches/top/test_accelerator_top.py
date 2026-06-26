@@ -581,6 +581,10 @@ async def test_top_double_buffer_pipelined(dut) -> None:
             got1[i, j] = to_signed(word, 32)
 
     # 12. Verify both results
-    assert np.array_equal(got0, ref0), f"Double buffer Bank 0 mismatch:\nref=\n{ref0}\ngot=\n{got0}"
-    assert np.array_equal(got1, ref1), f"Double buffer Bank 1 mismatch:\nref=\n{ref1}\ngot=\n{got1}"
+    assert np.array_equal(got0, ref0), (
+        f"Double buffer Bank 0 mismatch:\nref=\n{ref0}\ngot=\n{got0}"
+    )
+    assert np.array_equal(got1, ref1), (
+        f"Double buffer Bank 1 mismatch:\nref=\n{ref1}\ngot=\n{got1}"
+    )
 
