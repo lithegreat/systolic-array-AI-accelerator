@@ -587,3 +587,116 @@ async def test_top_double_buffer_pipelined(dut) -> None:
     assert np.array_equal(got1, ref1), (
         f"Double buffer Bank 1 mismatch:\nref=\n{ref1}\ngot=\n{got1}"
     )
+
+
+@cocotb.test()
+async def test_top_weight_reuse(dut) -> None:
+    """Verify weight reuse (REUSE_B) mode and benchmark the cycle savings."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
+    await reset_top(dut)
+
+    rng = random.Random(0xCAFE)
+    a0 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+    b0 = random_matrix(K, N, DATA_W, rng).astype(np.int64)
+    a1 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+
+    ref0 = matmul_ref(a0, b0, ACC_W)
+    ref1 = matmul_ref(a1, b0, ACC_W)  # Reuses b0!
+
+    # Program physical dimensions
+    await apb_write(dut, CTRL_BASE | REG_M_DIM, M)
+    await apb_write(dut, CTRL_BASE | REG_N_DIM, N)
+    await apb_write(dut, CTRL_BASE | REG_K_DIM, K)
+
+    # =========================================================================
+    # Run 1: Standard GEMM (Write A0 and B0)
+    # =========================================================================
+    t0_start = cocotb.utils.get_sim_time(units="ns")
+
+    # Select Bank 0 and reset pointers (normal mode, REUSE_B = 0)
+    await apb_write(
+        dut, AB_BASE | OFF_AB_CTRL, (0 << 5) | (0 << 4) | (0 << 3) | 0x01
+    )
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
+
+    # Write A0 and B0
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a0.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b0.flatten()))
+
+    # Trigger compute
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # Poll done
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Run 1 compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # Read back C0
+    got0 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got0[i, j] = to_signed(word, 32)
+
+    t0_end = cocotb.utils.get_sim_time(units="ns")
+    cycles_standard = (t0_end - t0_start) / 10
+
+    # =========================================================================
+    # Run 2: Weight Reuse GEMM (Write A1 only, reuse B0)
+    # =========================================================================
+    t1_start = cocotb.utils.get_sim_time(units="ns")
+
+    # Step 1: Set REUSE_B = 1 for Bank 0 (apb_bank = 0, sys_bank = 0)
+    await apb_write(
+        dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x00
+    )
+    # Step 2: Trigger reset pointers (bit 0 = 1). Since REUSE_B is active, B pointers will not reset.
+    await apb_write(
+        dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x01
+    )
+    # Reset read pointer in output buffer
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
+
+    # Write A1 only! Skip B entirely.
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a1.flatten()))
+
+    # Trigger compute
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # Poll done
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Run 2 (reuse) compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # Read back C1
+    got1 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got1[i, j] = to_signed(word, 32)
+
+    t1_end = cocotb.utils.get_sim_time(units="ns")
+    cycles_reuse = (t1_end - t1_start) / 10
+
+    # Verify both results
+    assert np.array_equal(got0, ref0), "Run 0 mismatch"
+    assert np.array_equal(got1, ref1), "Run 1 (reuse) mismatch"
+
+    cocotb.log.info("== PERFORMANCE COMPARISON ==")
+    cocotb.log.info(
+        f"Standard GEMM cycle count (Write A & B + Compute + Read C): {cycles_standard:.0f} cycles"
+    )
+    cocotb.log.info(
+        f"Weight Reuse GEMM cycle count (Write A only + Compute + Read C): {cycles_reuse:.0f} cycles"
+    )
+    cocotb.log.info(
+        f"Cycle savings: {cycles_standard - cycles_reuse:.0f} cycles ({(cycles_standard - cycles_reuse)/cycles_standard*100:.1f}%)"
+    )
