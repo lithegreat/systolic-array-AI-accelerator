@@ -156,7 +156,7 @@ run: elaborate
 	    -do "coverage save -onexit ucdb/$(TESTNAME).ucdb; run -all; quit -f" \
 	    -l log/$(TESTNAME).log
 	@# Check log for any UVM errors that vsim exit code may not reflect
-	@if grep -qE "# UVM_FATAL|# UVM_ERROR" $(BUILD_DIR)/log/$(TESTNAME).log; then \
+	@if grep -qE "# UVM_(ERROR|FATAL) :[[:space:]]+[1-9]" $(BUILD_DIR)/log/$(TESTNAME).log; then \
 	    echo "FAIL: $(TESTNAME)  (see $(BUILD_DIR)/log/$(TESTNAME).log)"; exit 1; \
 	fi
 	@echo "PASS: $(TESTNAME)"
@@ -181,7 +181,7 @@ regress: elaborate
 	        +UVM_MAX_QUIT_COUNT=1 \
 	        -do "coverage save -onexit ucdb/$$t.ucdb; run -all; quit -f" \
 	        -l log/$$t.log; \
-	    if grep -qE "# UVM_FATAL|# UVM_ERROR" log/$$t.log; then \
+	    if grep -qE "# UVM_(ERROR|FATAL) :[[:space:]]+[1-9]" log/$$t.log; then \
 	        echo "FAIL: $$t"; FAIL=$$((FAIL+1)); \
 	    else \
 	        echo "PASS: $$t"; PASS=$$((PASS+1)); \
