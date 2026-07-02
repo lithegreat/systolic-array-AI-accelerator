@@ -25,7 +25,7 @@ flowchart TB
    subgraph SoC["SoC / APB Master"]
       direction LR
       apb_m["APB Master"]
-      soc_irq["irq_en_4 / ss_ctrl_4 / irq_4"]
+      soc_irq["irq_en / irq\n(subsystem.v boundary)"]
    end
 
    subgraph TOP["accelerator_top"]
@@ -80,8 +80,8 @@ flowchart TB
    apb_m -- "PADDR / PSEL / PENABLE\nPWRITE / PWDATA" --> decode
    decode -- "PRDATA / PREADY / PSLVERR" --> apb_m
 
-   soc_irq -- "irq_en_4\nss_ctrl_4" --> CTRL
-   fsm -- "irq_4" --> soc_irq
+   soc_irq -- "irq_en (→ irq_en_4)" --> CTRL
+   fsm -- "irq_4 (→ irq)" --> soc_irq
 
    style SoC fill:#f5f5f5,stroke:#999
    style TOP fill:#e8f4fd,stroke:#4a90d9
@@ -119,9 +119,9 @@ flowchart TB
 | `PRDATA` | Output | `APB_DW` | Read data, muxed from `prdata_ab` / `prdata_ctrl` / `prdata_c` per `PADDR[9:8]`. |
 | `PREADY` | Output | `1` | APB ready; asserted when the selected sub-block is ready, or when `PSEL` is low. |
 | `PSLVERR` | Output | `1` | APB error; driven by the selected sub-block, normally deasserted in v1. |
-| `irq_en_4` | Input | `1` | SoC interrupt gate; combined with the control unit's interrupt state to form `irq_4`. |
-| `ss_ctrl_4` | Input | `8` | Reserved SoC subsystem control word, carried to the control unit. |
-| `irq_4` | Output | `1` | Interrupt back to the SoC; reflects the control unit's done-interrupt condition. |
+| `irq_en_4` | Input | `1` | SoC interrupt gate; combined with the control unit's interrupt state to form `irq_4`. Mapped from SoC `irq_en` by `subsystem.v`. |
+| `ss_ctrl_4` | Input | `8` | Reserved SoC subsystem control word, carried to the control unit. Removed at SoC boundary; tied to `8'b0` in `subsystem.v`. |
+| `irq_4` | Output | `1` | Interrupt back to the SoC; reflects the control unit's done-interrupt condition. Mapped to SoC `irq` by `subsystem.v`. |
 
 Quick read:
 
