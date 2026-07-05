@@ -132,4 +132,47 @@ accel_soc_sim:
     - cd Didactic-SoC && python3 ./verification/verilator/verilate_soc_accel.py
 
 
-
+# ---------------------------------------------------------------------------
+# CPU vs. Accelerator GEMM benchmark — wall-clock speedup report.
+#
+# Runs the 16×16 INT8 configuration (full hardware utilisation) using the
+# prebuilt verification/verilator/benchmark.hex.  Produces a GitLab Metrics
+# artifact (benchmark_metrics.txt in Prometheus key-value format) that is
+# displayed under Pipeline → Metrics and tracked across commits.
+#
+# Rebuild the hex locally when firmware changes:
+#   make -C Didactic-SoC verilate_benchmark_16
+#
+# Same trigger paths and infrastructure requirements as accel_soc_sim.
+# ---------------------------------------------------------------------------
+benchmark_sim:
+  stage: sim
+  image: $SOC_IMAGE
+  resource_group: sim-runner
+  timeout: 20m
+  variables:
+    GIT_SUBMODULE_STRATEGY: normal
+    GIT_SUBMODULE_DEPTH: 1
+    VERILATOR_JOBS: "1"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &benchmark_paths
+        - rtl/**/*
+        - Didactic-SoC
+        - ci/soc.Dockerfile
+        - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *benchmark_paths
+  script:
+    - cp -a /opt/soc-deps/.bender Didactic-SoC/.bender
+    - cp -a /opt/soc-deps/vendor_ips Didactic-SoC/vendor_ips
+    - cd Didactic-SoC
+    - python3 ./verification/verilator/verilate_soc_benchmark.py 2>&1 | tee /tmp/bench_out.txt
+    - python3 ../scripts/parse_benchmark_metrics.py /tmp/bench_out.txt benchmark_metrics.txt
+  artifacts:
+    when: always
+    reports:
+      metrics: Didactic-SoC/benchmark_metrics.txt
+    paths:
+      - Didactic-SoC/benchmark_metrics.txt
+    expire_in: 4 weeks
