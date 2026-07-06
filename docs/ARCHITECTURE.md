@@ -5,7 +5,7 @@
 > diving into any module; then follow the links into the
 > [interface contracts](interface/README.md) or the code.
 
-Last reviewed: 2026-06-24
+Last reviewed: 2026-07-02
 
 ## Bird's-eye view
 
@@ -100,8 +100,8 @@ remain) · **WIP** · **Planned**.
 | Golden / reference model | Stable | — |
 | Cocotb + Verilator regression | Working | Raise functional-coverage baseline. |
 | SoC integration (Verilator) | Stable | Signed-off: `accel_result == 0xACCE5500`. |
-| SoC integration (QuestaSim) | Working | Lab-license-gated; `+initreg+0` fetch-X fix in place. |
-| FPGA (PYNQ-Z1) | Working | Full on-board bring-up report. |
+| SoC integration (QuestaSim) | Working | Lab-license-gated; `+initreg+0` fetch-X fix in place. Re-verified 2026-07 after upstream Didactic-SoC address-map update (see [verification report §9.4](verification/accelerator_soc_report.md)). |
+| FPGA (PYNQ-Z1) | Working | Full on-board bring-up report; eikon Vivado run currently blocked by disk quota, see [tech-debt TD-4](plans/tech-debt.md). |
 | ASIC (GF 22 nm FDX) | Planned | Gate-level netlist + timing. |
 
 > Open gaps that need scheduling go to [plans/tech-debt.md](plans/tech-debt.md);
