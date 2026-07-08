@@ -2,8 +2,8 @@
 
 > **Status**: implemented and passing — k-induction proof (`mode prove`) and a
 > reachability sanity check (`mode cover`) both green.
-> **Tooling**: [Yosys](https://github.com/YosysHQ/yosys) 0.63 + Z3 4.15.8 via
-> [SymbiYosys](https://github.com/YosysHQ/sby) (`sby`).
+> **Tooling**: [Yosys](https://github.com/YosysHQ/yosys) 0.63 + Z3 (4.16.x, via
+> the `z3-solver` PyPI wheel — see §7) via [SymbiYosys](https://github.com/YosysHQ/sby) (`sby`).
 > **Scope**: `rtl/control/control_unit.sv` — the compute FSM
 > (`IDLE → ISSUE → BUSY → DONE → IDLE`), APB register-file invariants, and
 > interrupt / soft-reset behaviour.
@@ -29,21 +29,25 @@ one-cycle race condition (§4).
 
 ## 2. Toolchain
 
-Preinstalled in the CI simulation image (`ci/sim.Dockerfile`) and run automatically as a GitLab CI pipeline job.
+Preinstalled in the CI simulation image (`ci/sim.Dockerfile`) and run automatically as a GitLab CI pipeline job. As of §7, CI gets its `z3` binary from the `z3-solver` PyPI wheel (`requirements/sim.txt`), not the distro apt package — see §7 for why.
 
 To install/run locally:
 
 ```bash
-sudo dnf install -y yosys z3          # or: apt install yosys z3 (Debian/Ubuntu)
+sudo dnf install -y yosys          # or: apt install yosys (Debian/Ubuntu)
+pip install z3-solver              # modern prebuilt z3 CLI, see §7
 
 # SymbiYosys isn't packaged for Fedora; build from source
 git clone --depth 1 https://github.com/YosysHQ/sby.git /tmp/sby
 cd /tmp/sby && sudo make install PREFIX=/usr/local
 ```
 
-This installs `sby` to `/usr/local/bin/sby`. Other SMT backends (`cvc5`,
-`yices`) are available via `dnf` if a second opinion is ever needed; Boolector
-is not packaged and would need a source build.
+This installs `sby` to `/usr/local/bin/sby`. A distro `z3` package (`apt`/`dnf`
+install) also works for local, non-resource-constrained use, but prefer
+`z3-solver` since it's the version validated against this harness (see §7).
+Other SMT backends (`cvc5`, `yices`) are available via `dnf` if a second
+opinion is ever needed; Boolector is not packaged and would need a source
+build.
 
 ## 3. Harness design
 
@@ -178,3 +182,41 @@ unconditionally and passes in all cycles. This resolved **TD-7**.
 - Extend the same harness pattern to `rtl/array/systolic_array.sv` and/or
   `rtl/MAC/mac_pe.sv` (arithmetic/overflow invariants are good formal
   targets).
+
+## 7. CI incident: solver OOM traced to an ancient apt `z3`, not proof complexity (2026-07-08)
+
+`control_unit_formal` started reliably timing out in CI (`job_execution_timeout`
+after 5 minutes), while `mac_pe_formal`/`systolic_array_formal` kept passing on
+the same runner. `glab ci trace <job_id>` showed the solver hanging on
+`Checking assumptions in step 0` for 5+ minutes before dying
+(`Unexpected EOF response from solver`) — i.e. z3 itself was crashing/thrashing,
+not the harness looping through many BMC steps.
+
+**Root cause**: `ci/sim.Dockerfile` installed z3 via plain `apt-get install z3`,
+which resolves to **z3 4.8.12** (released 2021) in the `verilator/verilator:latest`
+base image — a version with materially worse bit-vector solver performance for
+this kind of design. The identical `control_unit.sby` model solves in well
+under a second with a modern z3 (verified both locally and by SSHing directly
+into the runner and running `sby` inside a rebuilt image).
+
+**Fix**: `ci/sim.Dockerfile` no longer installs z3 via apt; `requirements/sim.txt`
+adds `z3-solver` instead, whose PyPI wheel ships a modern prebuilt `z3` binary
+(lands at `/usr/local/bin/z3`, ahead of apt's `/usr/bin` on `PATH`, currently
+resolving to 4.16.x). A `RUN z3 --version` line in the Dockerfile sanity-checks
+this at image build time.
+
+**A dead end worth recording**: before the real cause was found, four commits
+tried to work around the symptom by shrinking the proof itself — `mode prove`
+(k-induction) → `mode bmc` (bounded, depth 10), depth 15 → 10, the real 32-bit
+APB register width → an 8-bit `` `ifdef FORMAL `` abstraction, and
+`chparam -set M 2 -set N 2 -set K 2`. **None of these fixed the CI failure**
+(the job still timed out after all four landed) because they were treating the
+wrong problem — and they silently weakened what was actually being proved
+(a bounded check instead of an unbounded inductive one; an 8-bit register
+abstraction instead of the real 32-bit hardware). All four were reverted once
+the z3 upgrade landed; the harness now runs at its original strength (`mode
+prove`, depth 15, real `APB_DW=32`, no dimension shrinking) and still completes
+in ~1-3s / <45MB. **Lesson**: for a formal-verification CI timeout/OOM, check
+the solver/toolchain version in the actual CI image before concluding the
+proof itself is too expensive — `sby`/z3 version differences can dwarf any
+plausible state-space reduction.
