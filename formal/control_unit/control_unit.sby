@@ -23,7 +23,7 @@ smtbmc z3
 # control_unit.sv's body instead. See formal/scripts/yosys_shim.py;
 # rtl/ is never modified.
 exec -- python3 yosys_shim.py control_unit.sv control_unit.yosys.sv control_unit_formal.svh
-read_verilog -sv control_unit.yosys.sv
+read_verilog -formal -DFORMAL -sv control_unit.yosys.sv
 chparam -set M 2 -set N 2 -set K 2 control_unit
 prep -top control_unit
 
