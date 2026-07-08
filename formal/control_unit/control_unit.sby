@@ -8,7 +8,7 @@
 # docs/interface/control_unit_if.md for the protocol these properties encode.
 
 [options]
-mode prove
+mode bmc
 depth 10
 
 [engines]
