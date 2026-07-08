@@ -294,3 +294,116 @@ INIT_OPTS ?= +initreg+0          # 进入 VOPT_OPTS
 - **建议**：日常功能签核用 Verilator（快、license-free、已纳入 CI）；QuestaSim 经
   `scripts/lab_server_sim.sh` 在 eikon 上做 4-state 全 SoC 集成回归（已默认带
   `+initreg+0`，开箱即用）。
+
+---
+
+## 9. 2026-07 更新：上游 SoC 主更新后的重新验证（地址映射变更）
+
+> 上游分支 `update_Didactic_SoC_from_moodle` 重构了地址映射与子系统端口（详见
+> §9.1），因此本节之前 §1–§8 记录的具体地址（如握手地址 `0x0102_0380`、加速器 APB
+> 基址 `0x0105_1000`）已成为**历史值**，仅对应当时的映射；下面记录重构后的重新
+> 验证结果。方法论与本报告 §4–§5 的踩坑经验（`COMMON_CELLS_ASSERTS_OFF`、
+> `+initreg+0`、无头 `RUN_CMD`）在新映射下依然全部适用，无需改变。
+
+### 9.1 背景：地址映射与端口重构
+
+- 地址：`ctrl` 区从 `0x0104_0000` 移到 `0x0140_0000`；`dbg`/握手轮询地址随之从
+  `0x0102_0380` 移到 `0x0120_0380`；加速器 APB 基址从 `0x0105_1000` 移到
+  `0x0151_0000`（学生子系统槽位地址改为 `0x015X_0000`，X=槽位号）。
+- 端口重命名：`clk_in`→`clk`，`reset_int`（有效高）→`reset_n`（有效低），
+  `irq_en_X`/`irq_X`→`irq_en`/`irq`；移除 `ss_ctrl_X`/`high_speed_clk`；
+  `PADDR` 由 32 位收窄为 16 位。
+- Kactus2 生成的 `student_wrapper_N.v` 现在实例化通用 `subsystem` 模块
+  (`Didactic-SoC/src/generated/subsystem.v`，我们手工编辑的胶水层)，取代旧的
+  `<name>_ss_tieoff.sv` 单独例化模式。
+- `sp_sram`（旧：按裸字节地址直接索引）被 `obi_sram.sv`（包装
+  `tech_cells_generic` 的 `tc_sram`，字索引）取代——旧的按字节散列 `$readmemh`
+  技巧不再适用，见 §9.2。
+
+### 9.2 Verilator 全 SoC 重新验证（`make verilate_accel`）
+
+- `Bender.yml` 依赖清单缺失 `vendor_ips/ibex/rtl/ibex_dummy_instr.sv` 的
+  vendor_package 条目，导致该文件从未被 `bender vendor init` 拉取——已修复
+  （新增到 `include_from_upstream`）。
+- `common_cells` 头文件 `assertions.svh` 会**无条件**定义 `INC_ASSERT`（除非设
+  `ASSERTS_OFF`，这是与 `COMMON_CELLS_ASSERTS_OFF` 不同的另一个宏），且 Verilator
+  的宏状态是**全局**的，导致该定义泄漏进 `ibex_ex_block.sv` 触发缺失模块错误
+  ——已在 `verilate.py` 与 `verilate_soc_accel.py` 的 `VERILATOR_ARGS` 都加上
+  `+define+ASSERTS_OFF` 修复。
+- `verilate.py` 新增 `MANUAL_FILES` 缺口：`tc_sram.sv`（模块名≠文件名）、
+  `src/tech_generic/analog_tieoff.v`（定义 `TOPCELL_ISAR_with_padframe`，同样模块
+  名≠文件名）——均已显式列出并加 lint 豁免。
+- **关键引导（boot）修复**（`tb_soc_accel.sv`）：`ctrl` 区新基址 `0x0140_0000`
+  与 `imem`（`0x0100_0000`）相距 `0x0040_0000`，远超 `JAL` 指令 ±1 MiB 编码范围
+  （旧的单条 `jal` 强制引导技巧会静默环绕、跳到垃圾地址）。改用相邻的
+  `boot_reg_0`/`boot_reg_1` 强制一对 `auipc`+`jalr` 实现跨段跳转
+  （`boot_reg_0=0xFFC00097`，`boot_reg_1=0xF0008067`）。
+- IMEM/DMEM 层级路径与加载方式同步更新为
+  `dut.i_system_control.SysCtrl_SS.{i_imem,i_dmem}.u_tc_sram.sram`，加载改为
+  **直接按字索引**（`IMEM[wi] = prog_tmp[wi]`），不再需要旧 `sp_sram` 的
+  按字节散列（`ram[i*4]`）技巧。
+- **结果（2026-07-02 验证）**：`make repository_init` 后 `make verilate_accel` →
+  `RESULT: PASS` + `[soc_accel] OK`（内核经真实 OBI/APB 驱动加速器，
+  `accel_result == 0xACCE5500`）。
+
+### 9.3 `verilate_benchmark` 修复并通过
+
+- `verilate_soc_benchmark.py` 复用 `tb_soc_accel.sv`，但维护**独立**的
+  `VERILATOR_ARGS` 列表（不从 `verilate.py` 继承），需要单独补上同样的
+  `+define+ASSERTS_OFF` 修复——**教训**：三个 `verilate*.py` 脚本的
+  `VERILATOR_ARGS` 互相独立，一处修复不会自动传播。
+- 脚本里硬编码的 UART 串口解码地址 `"PA:0x01030100"` 因 `PERIPH_BASE` 由
+  `0x0103_0000` 改为 `0x0130_0000` 而失效（不影响 PASS/FAIL 判定，只影响可选的
+  解码打印）——已更新为 `"PA:0x01300100"`。
+- `sw/benchmark/` 引用的黄金数据文件 `accel_gemm_data_{8x8,16x16}.h` 一直缺失
+  （生成器 `gen_accel_data.py` 只输出到 `sw/accel/`）——通过软链接
+  `sw/benchmark/accel_gemm_data_*.h -> ../accel/accel_gemm_data_*.h` 修复，避免
+  两份拷贝间的漂移。
+- `verification/verilator/benchmark.hex` 已从工作区丢失，用与 `accel.hex` 相同的
+  流程重新构建（`sw/Makefile TESTCASE=benchmark`）。
+- **结果**：`make verilate_benchmark` → `[benchmark] PASS`，UART 解码显示
+  `speedup: 1024.00x`（16×16 GEMM 硬件 32 周期 vs. 估算软件 32768 周期），这个
+  巨大加速比是脉动阵列的预期设计结果，不是异常。
+
+### 9.4 QuestaSim 在 eikon 上重新跑通——子模块 Makefile 回归
+
+- 上游 SoC 主更新把 `Didactic-SoC/sim/Makefile` **回退**到了早于 §4.5/§4.6/§5
+  三处本地修复的版本（`ACCEL_INC_DIR`/`+incdir`、
+  `+define+COMMON_CELLS_ASSERTS_OFF`、可覆盖的 `RUN_CMD`），说明这些修复此前
+  未被合并进子模块上游、在子模块指向新版本后被静默丢弃。
+- 已重新对照记忆笔记，将三处修复重新应用到 `Didactic-SoC/sim/Makefile`。
+- 用 `bash scripts/lab_server_sim.sh accel` 在 eikon 上重跑全流程：
+  `compile` Errors:0 → `elaborate` Errors:0 → `run_sim`（容器内 `alma.sif`）：
+  `"RX string: accel: PASS"`，`"JTAG RETURN OK: Received status core: 0x00000000"`，
+  Errors:0，Warnings:2。
+- **教训（已计入 [tech-debt](../plans/tech-debt.md)）**：子模块内被 vendor
+  的 Makefile／脚本上的本地补丁，在子模块跟随上游同步更新时可能被静默回退；
+  每次子模块更新后都应重新核对此前记录过的本地修复是否还在。
+
+### 9.5 FPGA 流程（eikon）——尚未打通，被磁盘配额阻塞
+
+- 尝试在 eikon 上运行 FPGA（Vivado）流程（`Didactic-SoC/fpga`，
+  `Didactic-SoC/Makefile` 的 `fpga: ... $(MAKE) -C fpga all_xilinx`）之前，先检查
+  eikon 家目录磁盘配额。
+- **现象**：eikon 家目录已用 **9871 MiB**，软配额 **8192 MiB**，硬配额
+  **10240 MiB**——只剩约 **369 MiB** 硬配额余量。Vivado 综合 + 实现 + 比特流生成
+  通常需要数 GiB 的临时/构建空间，在当前余量下无法完成。
+- **状态**：阻塞，尚未实际发起 Vivado 构建。下一步需要先清理 eikon 家目录（例如
+  旧的 `obj_dir*/`、`sim/veri_work/`、既有 QuestaSim `build/` 产物）或申请更高配额，
+  再重新尝试。
+
+### 9.6 本轮涉及文件（截至本报告，尚未提交）
+
+| 文件 | 变更 |
+|------|------|
+| `Didactic-SoC/Bender.yml` | 改：补上 `ibex_dummy_instr.sv` 的 vendor_package 条目 |
+| `Didactic-SoC/verification/verilator/verilate.py` | 改：`+define+ASSERTS_OFF`；新增 `MANUAL_FILES`（`tc_sram.sv`、`analog_tieoff.v`） |
+| `Didactic-SoC/verification/verilator/verilate.vlt` | 改：新增 lint 豁免 |
+| `Didactic-SoC/verification/verilator/verilate_soc_accel.py` | 改：`+define+ASSERTS_OFF` |
+| `Didactic-SoC/verification/verilator/src/soc_accel/tb_soc_accel.sv` | 改：跨段 `auipc`+`jalr` 引导；IMEM/DMEM 层级路径与字索引加载 |
+| `Didactic-SoC/verification/verilator/verilate_soc_benchmark.py` | 改：`+define+ASSERTS_OFF`；UART 解码地址 |
+| `Didactic-SoC/sw/benchmark/accel_gemm_data_{8x8,16x16}.h` | 新增软链接 -> `../accel/` |
+| `Didactic-SoC/verification/verilator/{accel,benchmark}.hex` | 重建 |
+| `Didactic-SoC/sim/Makefile` | 改：重新应用 `ACCEL_INC_DIR`、`COMMON_CELLS_ASSERTS_OFF`、`RUN_CMD` 三处修复 |
+
+> 注：`Didactic-SoC` 是子模块，其改动需在子模块分支提交后由主仓库更新 gitlink。
