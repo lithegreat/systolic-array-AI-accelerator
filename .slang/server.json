@@ -1,0 +1,9 @@
+{
+  "flags": "-I rtl/include -Wno-useless-cast",
+  "index": [
+    {
+      "dirs": ["rtl", "sim/testbenches"],
+      "excludeDirs": ["build", "Didactic-SoC", "node_modules"]
+    }
+  ]
+}
