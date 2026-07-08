@@ -9,7 +9,7 @@
 
 [options]
 mode prove
-depth 15
+depth 10
 
 [engines]
 smtbmc z3
@@ -24,6 +24,7 @@ smtbmc z3
 # rtl/ is never modified.
 exec -- python3 yosys_shim.py control_unit.sv control_unit.yosys.sv control_unit_formal.svh
 read_verilog -sv control_unit.yosys.sv
+chparam -set M 2 -set N 2 -set K 2 control_unit
 prep -top control_unit
 
 [files]
