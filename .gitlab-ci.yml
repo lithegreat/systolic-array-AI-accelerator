@@ -70,6 +70,17 @@ accel_verilator_sim:
   script:
     - ./sim/scripts/run_verilator.sh
 
+control_unit_formal:
+  stage: sim
+  image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 5m
+  script:
+    - cd formal/control_unit
+    - sby -f control_unit.sby
+    - sby -f control_unit_cover.sby
+
+
 # pyuvm end-to-end test for accelerator_top: loads matrices A/B, triggers
 # compute, drains C, compares against a Python golden model.  Runs on the
 # same SIM_IMAGE (which includes pyuvm via requirements/sim.txt).
