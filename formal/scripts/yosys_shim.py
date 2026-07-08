@@ -30,6 +30,7 @@ inside the SymbiYosys work directory.
 Usage: yosys_shim.py <src.sv> <dst.sv> [properties_fragment.svh]
 """
 
+import os
 import re
 import sys
 
@@ -70,10 +71,55 @@ def main() -> int:
     with open(src, encoding="utf-8") as f:
         text = f.read()
 
-    imports = IMPORT_RE.findall(text)
-    if imports:
-        text = IMPORT_RE.sub("", text)
-        text = MODULE_RE.sub("".join(imports) + "module", text, count=1)
+    while True:
+        import_match = re.search(r"\bimport\s+(\w+)\s*::\s*\*\s*;", text)
+        if not import_match:
+            break
+        pkg_name = import_match.group(1)
+        pkg_filename = f"{pkg_name}.sv"
+        pkg_paths = [
+            pkg_filename,
+            os.path.join(os.path.dirname(src), pkg_filename),
+            os.path.join(os.path.dirname(src), f"../rtl/include/{pkg_filename}"),
+            os.path.join(os.path.dirname(src), f"../../rtl/include/{pkg_filename}"),
+            os.path.join(os.path.dirname(src), f"../../../rtl/include/{pkg_filename}"),
+            f"rtl/include/{pkg_filename}",
+            f"../rtl/include/{pkg_filename}",
+            f"../../rtl/include/{pkg_filename}",
+        ]
+        pkg_content = None
+        for p in pkg_paths:
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    pkg_content = f.read()
+                break
+
+        params = []
+        if pkg_content:
+            for m in re.finditer(r"localparam\s+[\w\s\[\]:]+\s+(\w+)\s*=", pkg_content):
+                params.append(m.group(1))
+
+        text = re.sub(
+            r"\bimport\s+" + pkg_name + r"\s*::\s*\*\s*;\s*", "", text, count=1
+        )
+
+        module_match = re.search(r"\bmodule\s+\w+", text)
+        if module_match and params:
+            header_start = module_match.start()
+            header_end = text.find(");", header_start)
+            if header_end != -1:
+                header_end += 2
+                header_text = text[header_start:header_end]
+                for p in params:
+                    header_text = re.sub(
+                        r"(?<!::)\b" + p + r"\b", f"{pkg_name}::{p}", header_text
+                    )
+
+                spliced = f"\n    // Spliced package parameters for {pkg_name} Yosys 0.33 compatibility\n"
+                for p in params:
+                    spliced += f"    localparam {p} = {pkg_name}::{p};\n"
+
+                text = text[:header_start] + header_text + spliced + text[header_end:]
 
     if len(sys.argv) == 4:
         with open(sys.argv[3], encoding="utf-8") as f:
