@@ -135,17 +135,9 @@ always @(posedge clk) begin
         && $past(cstate_q) == F_CU_DONE)
         assert (reg_int_stat[INT_DONE_BIT]);
 
-    // KNOWN ISSUE (found by this formal check, not yet fixed in RTL): when
-    // CTRL.softrst is set during a cycle that also has start_pulse/cstate_d
-    // computing a non-IDLE next state, control_unit.sv forces cstate_q back
-    // to IDLE via the softrst branch, but reg_status[STATUS_BUSY_BIT] is
-    // still assigned unconditionally from that same (pre-override) cstate_d
-    // afterwards -- so STATUS.busy can read 1 for exactly one cycle while
-    // cstate_q == IDLE. Confirmed with a concrete counterexample trace
-    // (control_unit.sby, engine_0/trace.vcd). The property below states the
-    // invariant only for cycles without a concurrent soft-reset; see
-    // docs/plans/tech-debt.md for the follow-up decision (fix vs. accept).
-    if (rst_n && f_past_valid && $past(rst_n) && !$past(reg_ctrl[CTRL_SOFTRST_BIT]))
+    // Invariant: STATUS.busy is 1 if and only if the FSM is not in IDLE.
+    // (This holds in all cycles, including immediately after a soft-reset).
+    if (rst_n)
         assert (reg_status[STATUS_BUSY_BIT] == (cstate_q != F_CU_IDLE));
 end
 

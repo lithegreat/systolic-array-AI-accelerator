@@ -134,30 +134,24 @@ every trace with:
 always @* if ($initstate) assume (reset_int);
 ```
 
-## 4. A real bug found this way
+## 4. A real bug found and resolved
 
 **Soft-reset vs. `STATUS.busy` race**, found by
 [control_unit_formal.svh](../../formal/control_unit/control_unit_formal.svh)
-and confirmed with a concrete counterexample trace
-(`formal/control_unit/control_unit/engine_0/trace.vcd`):
+and confirmed with a concrete counterexample trace:
 
-> When `CTRL.softrst` is set during the same cycle that `start_pulse` (or an
+> When `CTRL.softrst` was set during the same cycle that `start_pulse` (or an
 > in-flight compute) would otherwise drive `cstate_d` to a non-`IDLE` value,
-> `control_unit.sv`'s soft-reset branch correctly forces `cstate_q` back to
-> `IDLE` on the next clock edge — but `reg_status[STATUS_BUSY_BIT]` is still
+> `control_unit.sv`'s soft-reset branch correctly forced `cstate_q` back to
+> `IDLE` on the next clock edge — but `reg_status[STATUS_BUSY_BIT]` was still
 > assigned unconditionally from that same (pre-override) `cstate_d`
-> immediately afterward. The result: `STATUS.busy` reads `1` for exactly one
+> immediately afterward. The result: `STATUS.busy` read `1` for exactly one
 > cycle while `cstate_q == IDLE`.
 
-The property that would assert `STATUS.busy == (cstate_q != IDLE)`
-unconditionally is currently qualified to exclude the concurrent-soft-reset
-cycle (see the `KNOWN ISSUE` comment in `control_unit_formal.svh`), so the
-proof passes while documenting the gap rather than hiding it.
-
-This is tracked as **TD-7** in
-[docs/plans/tech-debt.md](../plans/tech-debt.md) pending a decision to fix the
-RTL (make the `STATUS.busy` assignment respect the soft-reset override, same
-as `cstate_q`) or accept it as a documented one-cycle read glitch.
+This has been fixed in the RTL by wrapping the normal assignments of `reg_status`
+and `reg_int_stat` inside the `else` branch of the soft reset check.
+The formal property now asserts `STATUS.busy == (cstate_q != IDLE)`
+unconditionally and passes in all cycles. This resolved **TD-7**.
 
 ## 5. Lessons learned / reusable notes
 
