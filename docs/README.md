@@ -42,7 +42,8 @@ docs/
 │   ├── soc_platform.md       # Didactic SoC platform notes
 │   └── course_kickoff.md     # course timeline, deliverables, expectations
 └── verification/             # verification & bring-up reports
-    └── accelerator_soc_report.md
+    ├── accelerator_soc_report.md
+    └── control_unit_formal.md    # SymbiYosys formal verification of control_unit
 ```
 
 ## Conventions
