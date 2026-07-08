@@ -29,8 +29,9 @@ one-cycle race condition (§4).
 
 ## 2. Toolchain
 
-Not yet part of the CI images (`ci/check.Dockerfile`, `ci/sim.Dockerfile`);
-install locally:
+Preinstalled in the CI simulation image (`ci/sim.Dockerfile`) and run automatically as a GitLab CI pipeline job.
+
+To install/run locally:
 
 ```bash
 sudo dnf install -y yosys z3          # or: apt install yosys z3 (Debian/Ubuntu)
@@ -40,7 +41,7 @@ git clone --depth 1 https://github.com/YosysHQ/sby.git /tmp/sby
 cd /tmp/sby && sudo make install PREFIX=/usr/local
 ```
 
-This installs `sby` to `/usr/local/sbin/sby`. Other SMT backends (`cvc5`,
+This installs `sby` to `/usr/local/bin/sby`. Other SMT backends (`cvc5`,
 `yices`) are available via `dnf` if a second opinion is ever needed; Boolector
 is not packaged and would need a source build.
 
@@ -177,6 +178,3 @@ unconditionally and passes in all cycles. This resolved **TD-7**.
 - Extend the same harness pattern to `rtl/array/systolic_array.sv` and/or
   `rtl/MAC/mac_pe.sv` (arithmetic/overflow invariants are good formal
   targets).
-- Add a CI job once `yosys`/`sby` are baked into `ci/check.Dockerfile` or
-  `ci/sim.Dockerfile`.
-- Resolve TD-7 (fix the RTL race or formally accept it).
