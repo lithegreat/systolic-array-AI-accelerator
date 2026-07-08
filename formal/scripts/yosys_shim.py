@@ -24,12 +24,13 @@ inside the SymbiYosys work directory.
 
 Usage: yosys_shim.py <src.sv> <dst.sv> [properties_fragment.svh]
 """
+
 import re
 import sys
 
-IMPORT_RE = re.compile(r'^[ \t]*import\s+\w+::\*\s*;[ \t]*\r?\n', re.M)
-MODULE_RE = re.compile(r'^module\b', re.M)
-ENDMODULE_RE = re.compile(r'^endmodule\b.*$', re.M)
+IMPORT_RE = re.compile(r"^[ \t]*import\s+\w+::\*\s*;[ \t]*\r?\n", re.M)
+MODULE_RE = re.compile(r"^module\b", re.M)
+ENDMODULE_RE = re.compile(r"^endmodule\b.*$", re.M)
 
 
 def main() -> int:
@@ -54,7 +55,7 @@ def main() -> int:
             print(f"error: no 'endmodule' found in {src}", file=sys.stderr)
             return 1
         last = matches[-1]
-        text = text[: last.start()] + props + "\n" + text[last.start():]
+        text = text[: last.start()] + props + "\n" + text[last.start() :]
 
     with open(dst, "w", encoding="utf-8") as f:
         f.write(text)
@@ -63,4 +64,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
