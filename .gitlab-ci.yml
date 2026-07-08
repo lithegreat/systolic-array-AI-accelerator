@@ -80,6 +80,25 @@ control_unit_formal:
     - sby -f control_unit.sby
     - sby -f control_unit_cover.sby
 
+mac_pe_formal:
+  stage: sim
+  image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 5m
+  script:
+    - cd formal/mac_pe
+    - sby -f mac_pe.sby
+    - sby -f mac_pe_cover.sby
+
+systolic_array_formal:
+  stage: sim
+  image: $SIM_IMAGE
+  resource_group: sim-runner
+  timeout: 10m
+  script:
+    - cd formal/systolic_array
+    - sby -f systolic_array.sby
+    - sby -f systolic_array_cover.sby
 
 # pyuvm end-to-end test for accelerator_top: loads matrices A/B, triggers
 # compute, drains C, compares against a Python golden model.  Runs on the

@@ -1,0 +1,34 @@
+# mac_pe.sby -- SymbiYosys k-induction proof for mac_pe arithmetic invariants.
+#
+# Proves (by k-induction, depth 10) that:
+#   P1. Reset clears acc_q / a_out / b_out to zero.
+#   P2. When en=0 no register changes.
+#   P3. clear_acc=1 with en=1 initialises acc_q to the current product.
+#   P4. clear_acc=0 with en=1 accumulates acc_q += product.
+#   P5. Systolic passthrough: a_out/b_out register a_in/b_in on en=1.
+#   P6. pe_out is always a combinational tap of acc_q.
+#
+# Run from this directory:
+#   sby -f mac_pe.sby
+#
+# See mac_pe_formal.svh for the full property set and docs/interface/mac_if.md
+# for the protocol these properties encode.
+
+[options]
+mode prove
+depth 10
+
+[engines]
+smtbmc z3
+
+[script]
+# mac_pe.sv uses no package-import header syntax, so the shim is only needed
+# to splice the property body in just before endmodule.
+exec -- python3 yosys_shim.py mac_pe.sv mac_pe.yosys.sv mac_pe_formal.svh
+read_verilog -sv mac_pe.yosys.sv
+prep -top mac_pe
+
+[files]
+../../rtl/MAC/mac_pe.sv
+mac_pe_formal.svh
+../scripts/yosys_shim.py
