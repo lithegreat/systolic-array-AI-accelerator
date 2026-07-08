@@ -1,0 +1,33 @@
+# control_unit.sby -- SymbiYosys k-induction proof for control_unit's compute
+# FSM, APB register-file invariants, and interrupt/soft-reset behaviour.
+#
+# Run from this directory:
+#   sby -f control_unit.sby
+#
+# See control_unit_formal.svh for the property list and
+# docs/interface/control_unit_if.md for the protocol these properties encode.
+
+[options]
+mode prove
+depth 15
+
+[engines]
+smtbmc z3
+
+[script]
+# Yosys's built-in frontend can't parse the `module foo import pkg::*; #(...)`
+# header syntax used by control_unit.sv (Verilator and commercial tools
+# accept it fine), and it doesn't wire up hierarchical `dut.<signal>`
+# references into a sibling instance's internals -- so the properties in
+# control_unit_formal.svh are spliced directly into a throwaway copy of
+# control_unit.sv's body instead. See formal/scripts/yosys_shim.py;
+# rtl/ is never modified.
+exec -- python3 yosys_shim.py control_unit.sv control_unit.yosys.sv control_unit_formal.svh
+read_verilog -sv control_unit.yosys.sv
+prep -top control_unit
+
+[files]
+../../rtl/include/accel_pkg.sv
+../../rtl/control/control_unit.sv
+control_unit_formal.svh
+../scripts/yosys_shim.py
