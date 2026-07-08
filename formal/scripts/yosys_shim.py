@@ -17,7 +17,12 @@ This script:
      hierarchical `dut.<signal>` references into a sibling instance's
      internals -- only real module ports resolve correctly that way, so
      splicing into the same module body is used instead of a bound/
-     instantiated checker module).
+     instantiated checker module). Only the text between the
+     __FORMAL_PROPS_BEGIN__/__FORMAL_PROPS_END__ marker comments in the
+     properties fragment is spliced -- the fragment wraps that text in its
+     own throwaway module shell so it is also valid, self-contained
+     SystemVerilog when opened directly in an editor/linter; that shell is
+     discarded here and never reaches Yosys.
 
 Never touches anything under rtl/ -- it only produces a throwaway copy
 inside the SymbiYosys work directory.
@@ -31,6 +36,29 @@ import sys
 IMPORT_RE = re.compile(r"^[ \t]*import\s+\w+::\*\s*;[ \t]*\r?\n", re.M)
 MODULE_RE = re.compile(r"^module\b", re.M)
 ENDMODULE_RE = re.compile(r"^endmodule\b.*$", re.M)
+PROPS_BEGIN_RE = re.compile(r"^[ \t]*//[ \t]*__FORMAL_PROPS_BEGIN__", re.M)
+PROPS_END_RE = re.compile(r"^[ \t]*//[ \t]*__FORMAL_PROPS_END__", re.M)
+
+
+def extract_props(props_text: str) -> str:
+    """Return only the text between the BEGIN/END marker comments.
+
+    control_unit_formal.svh (and similar fragments) wrap their real
+    property content in a throwaway module shell so the file is valid,
+    self-contained SystemVerilog for editors/linters. That shell must not
+    leak into the real splice, so pull out just the marked region. Only
+    matches markers that start a `//` comment line (not mere mentions of
+    the marker names in prose elsewhere in the file). Falls back to the
+    whole text if no markers are present, for fragments that don't need a
+    lint shell.
+    """
+    begin_m = PROPS_BEGIN_RE.search(props_text)
+    end_m = PROPS_END_RE.search(props_text)
+    if begin_m is None or end_m is None:
+        return props_text
+    start = props_text.find("\n", begin_m.end()) + 1
+    end = end_m.start()
+    return props_text[start:end]
 
 
 def main() -> int:
@@ -49,7 +77,7 @@ def main() -> int:
 
     if len(sys.argv) == 4:
         with open(sys.argv[3], encoding="utf-8") as f:
-            props = f.read()
+            props = extract_props(f.read())
         matches = list(ENDMODULE_RE.finditer(text))
         if not matches:
             print(f"error: no 'endmodule' found in {src}", file=sys.stderr)

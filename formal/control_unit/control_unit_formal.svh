@@ -1,8 +1,9 @@
 // -----------------------------------------------------------------------------
 // control_unit_formal.svh -- SVA property body for control_unit.
 //
-// This is NOT a standalone module: formal/scripts/yosys_shim.py splices this
-// text into a throwaway copy of control_unit.sv, right before its
+// This is NOT a standalone module in the formal (yosys) flow: yosys_shim.py
+// splices only the text between the __FORMAL_PROPS_BEGIN__/__FORMAL_PROPS_END__
+// markers below into a throwaway copy of control_unit.sv, right before its
 // `endmodule`, so the properties can reference control_unit's internal
 // signals directly (clk, rst_n, cstate_q, reg_ctrl, ...). rtl/control/
 // control_unit.sv itself is never modified -- see control_unit.sby.
@@ -15,9 +16,56 @@
 // wires for internal (non-port) signals -- only real module ports resolve
 // correctly that way.)
 //
+// The control_unit_formal_lint_shim module below is NOT part of what gets
+// spliced into the real proof -- it exists purely so this file is valid,
+// self-contained SystemVerilog when opened directly by an editor/linter
+// (e.g. slang-server's single-file "shallow compilation"). Without it every
+// statement here is flagged "member not allowed at compilation unit scope",
+// since bare always-blocks aren't legal outside a module. Keep the
+// placeholder declarations' names/types in sync with control_unit.sv's
+// internal signals if that file's signals change.
+//
 // See docs/interface/control_unit_if.md for the compute-FSM diagram these
 // properties encode. Run with SymbiYosys: sby -f control_unit.sby
 // -----------------------------------------------------------------------------
+`include "accel_pkg.sv"
+
+`pragma diagnostic push
+`pragma diagnostic ignore="-Wunknown-sys-name" // $initstate is a Yosys/SBY-only builtin, see below
+
+module control_unit_formal_lint_shim
+    import accel_pkg::*;
+#(
+    parameter int unsigned APB_DW = 32,
+    parameter int unsigned M      = DEF_M,
+    parameter int unsigned N      = DEF_N,
+    parameter int unsigned K      = DEF_K
+) (
+    // Declared as inputs (rather than free-floating `logic`) purely so
+    // standalone lint/editor compilation doesn't flag them as "never
+    // assigned" -- the real splice never sees this port list, since only
+    // the properties themselves reference these names, resolved there
+    // against control_unit's actual internal signals.
+    input logic              clk,
+    input logic              rst_n,
+    input logic              reset_int,
+    input logic [APB_DW-1:0] reg_ctrl,
+    input logic [APB_DW-1:0] reg_status,
+    input logic [APB_DW-1:0] reg_int_stat,
+    input logic [APB_DW-1:0] reg_m_dim,
+    input logic [APB_DW-1:0] reg_n_dim,
+    input logic [APB_DW-1:0] reg_k_dim,
+    input logic [1:0]        cstate_q,
+    input logic              start_pulse,
+    input logic              done_event,
+    input logic              array_start,
+    input logic              array_clear
+);
+
+    // __FORMAL_PROPS_BEGIN__ -- yosys_shim.py splices only the lines between
+    // this marker and __FORMAL_PROPS_END__ into control_unit's real module
+    // body; the wrapper above/below exists for standalone editor parsing
+    // only and is never seen by the formal flow.
 
 localparam logic [1:0] F_CU_IDLE  = 2'd0;
 localparam logic [1:0] F_CU_ISSUE = 2'd1;
@@ -129,3 +177,8 @@ always @(posedge clk) begin
         cover (cstate_q == F_CU_DONE);
     end
 end
+
+    // __FORMAL_PROPS_END__
+endmodule
+
+`pragma diagnostic pop
