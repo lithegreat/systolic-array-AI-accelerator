@@ -9,7 +9,7 @@
 
 [options]
 mode cover
-depth 10
+depth 15
 
 [engines]
 smtbmc z3
@@ -17,8 +17,7 @@ smtbmc z3
 [script]
 # See control_unit.sby for why this shim step is needed.
 exec -- python3 yosys_shim.py control_unit.sv control_unit.yosys.sv control_unit_formal.svh
-read_verilog -formal -DFORMAL -sv control_unit.yosys.sv
-chparam -set M 2 -set N 2 -set K 2 control_unit
+read_verilog -sv control_unit.yosys.sv
 prep -top control_unit
 
 [files]

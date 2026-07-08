@@ -76,26 +76,21 @@ module control_unit
     // -------------------------------------------------------------------------
     // Register file
     // -------------------------------------------------------------------------
-`ifdef FORMAL
-    localparam int unsigned REG_W = 8;
-`else
-    localparam int unsigned REG_W = APB_DW;
-`endif
-    logic [REG_W-1:0]  reg_ctrl;
-    logic [REG_W-1:0]  reg_status;
-    logic [REG_W-1:0]  reg_m_dim;
-    logic [REG_W-1:0]  reg_n_dim;
-    logic [REG_W-1:0]  reg_k_dim;
-    logic [REG_W-1:0]  latched_m_dim;
-    logic [REG_W-1:0]  latched_n_dim;
-    logic [REG_W-1:0]  latched_k_dim;
-    logic [REG_W-1:0]  reg_int_en;
-    logic [REG_W-1:0]  reg_int_stat;
-    logic [REG_W-1:0]  perf_cycles;
-    logic [REG_W-1:0]  perf_apb_writes;
-    logic [REG_W-1:0]  perf_apb_reads;
-    logic [REG_W-1:0]  perf_in_stalls;
-    logic [REG_W-1:0]  perf_out_stalls;
+    logic [APB_DW-1:0] reg_ctrl;
+    logic [APB_DW-1:0] reg_status;
+    logic [APB_DW-1:0] reg_m_dim;
+    logic [APB_DW-1:0] reg_n_dim;
+    logic [APB_DW-1:0] reg_k_dim;
+    logic [APB_DW-1:0] latched_m_dim;
+    logic [APB_DW-1:0] latched_n_dim;
+    logic [APB_DW-1:0] latched_k_dim;
+    logic [APB_DW-1:0] reg_int_en;
+    logic [APB_DW-1:0] reg_int_stat;
+    logic [APB_DW-1:0] perf_cycles;
+    logic [APB_DW-1:0] perf_apb_writes;
+    logic [APB_DW-1:0] perf_apb_reads;
+    logic [APB_DW-1:0] perf_in_stalls;
+    logic [APB_DW-1:0] perf_out_stalls;
     logic              perf_active;
     logic              perf_in_stall_seen;
     logic              perf_out_stall_seen;
@@ -112,15 +107,15 @@ module control_unit
     logic apb_write_strobe;
     assign apb_write_strobe = apb_access && PWRITE;
 
-    function automatic logic [REG_W-1:0] clamp_dim(
-        input logic [REG_W-1:0] value,
+    function automatic logic [APB_DW-1:0] clamp_dim(
+        input logic [APB_DW-1:0] value,
         input int unsigned max_value
     );
-        logic [REG_W-1:0] max_word;
+        logic [APB_DW-1:0] max_word;
         begin
-            max_word = REG_W'(max_value);
+            max_word = APB_DW'(max_value);
             if (value == '0) begin
-                clamp_dim = REG_W'(1);
+                clamp_dim = APB_DW'(1);
             end else if (value > max_word) begin
                 clamp_dim = max_word;
             end else begin
@@ -165,12 +160,12 @@ module control_unit
     assign start_pulse  = ctrl_start_w && (cstate_q == C_IDLE);
 
     assign done_event = array_done;
-    assign cfg_m_dim  = {{(APB_DW-REG_W){1'b0}}, reg_m_dim};
-    assign cfg_n_dim  = {{(APB_DW-REG_W){1'b0}}, reg_n_dim};
-    assign cfg_k_dim  = {{(APB_DW-REG_W){1'b0}}, reg_k_dim};
-    assign run_m_dim  = {{(APB_DW-REG_W){1'b0}}, latched_m_dim};
-    assign run_n_dim  = {{(APB_DW-REG_W){1'b0}}, latched_n_dim};
-    assign run_k_dim  = {{(APB_DW-REG_W){1'b0}}, latched_k_dim};
+    assign cfg_m_dim  = reg_m_dim;
+    assign cfg_n_dim  = reg_n_dim;
+    assign cfg_k_dim  = reg_k_dim;
+    assign run_m_dim  = latched_m_dim;
+    assign run_n_dim  = latched_n_dim;
+    assign run_k_dim  = latched_k_dim;
 
     logic perf_clear_w;
     assign perf_clear_w = apb_write_strobe && (reg_off == REG_PERF_CTRL[7:0]) && PWDATA[PERF_CLEAR_BIT];
@@ -197,12 +192,12 @@ module control_unit
         if (!rst_n) begin
             reg_ctrl     <= '0;
             reg_status   <= '0;
-            reg_m_dim    <= REG_W'(M);
-            reg_n_dim    <= REG_W'(N);
-            reg_k_dim    <= REG_W'(K);
-            latched_m_dim <= REG_W'(M);
-            latched_n_dim <= REG_W'(N);
-            latched_k_dim <= REG_W'(K);
+            reg_m_dim    <= APB_DW'(M);
+            reg_n_dim    <= APB_DW'(N);
+            reg_k_dim    <= APB_DW'(K);
+            latched_m_dim <= APB_DW'(M);
+            latched_n_dim <= APB_DW'(N);
+            latched_k_dim <= APB_DW'(K);
             reg_int_en   <= '0;
             reg_int_stat <= '0;
             perf_cycles           <= '0;
@@ -220,7 +215,7 @@ module control_unit
 
             // CTRL register: SW writes, but start bit auto-clears next cycle.
             if (apb_write_strobe && reg_off == REG_CTRL[7:0]) begin
-                reg_ctrl <= REG_W'(PWDATA);
+                reg_ctrl <= PWDATA;
             end else begin
                 reg_ctrl[CTRL_START_BIT] <= 1'b0;
             end
@@ -250,18 +245,18 @@ module control_unit
             // this keeps an in-flight tile's compact layout stable.
             if (cstate_q == C_IDLE) begin
                 if (apb_write_strobe && reg_off == REG_M_DIM[7:0]) begin
-                    reg_m_dim <= clamp_dim(REG_W'(PWDATA), M);
+                    reg_m_dim <= clamp_dim(PWDATA, M);
                 end
                 if (apb_write_strobe && reg_off == REG_N_DIM[7:0]) begin
-                    reg_n_dim <= clamp_dim(REG_W'(PWDATA), N);
+                    reg_n_dim <= clamp_dim(PWDATA, N);
                 end
                 if (apb_write_strobe && reg_off == REG_K_DIM[7:0]) begin
-                    reg_k_dim <= clamp_dim(REG_W'(PWDATA), K);
+                    reg_k_dim <= clamp_dim(PWDATA, K);
                 end
             end
 
             // INT_EN: simple R/W.
-            if (apb_write_strobe && reg_off == REG_INT_EN[7:0]) reg_int_en <= REG_W'(PWDATA);
+            if (apb_write_strobe && reg_off == REG_INT_EN[7:0]) reg_int_en <= PWDATA;
 
             if (perf_clear_w) begin
                 perf_cycles           <= '0;
