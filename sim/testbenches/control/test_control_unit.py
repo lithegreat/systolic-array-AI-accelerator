@@ -69,7 +69,7 @@ class CtrlApb(ApbMaster):
         self.dut.PENABLE.value = 0
         await self._edge()
         self.dut.PENABLE.value = 1
-        await Timer(1, unit="ns")
+        await Timer(1, units="ns")
         rdata = int(self.dut.PRDATA.value)
         await self._edge()
         self.dut.PSEL.value = 0
@@ -99,7 +99,7 @@ async def reset_dut(dut) -> None:
 
 @cocotb.test()
 async def test_register_rw(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -130,7 +130,7 @@ async def test_register_rw(dut) -> None:
 
 @cocotb.test()
 async def test_start_busy_done_irq(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -175,7 +175,7 @@ async def test_start_busy_done_irq(dut) -> None:
 
 @cocotb.test()
 async def test_soft_reset(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -193,7 +193,7 @@ async def test_soft_reset(dut) -> None:
 
 @cocotb.test()
 async def test_start_while_busy_is_ignored(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -218,7 +218,7 @@ async def test_start_while_busy_is_ignored(dut) -> None:
 
 @cocotb.test()
 async def test_dimension_writes_ignored_while_busy(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -242,7 +242,7 @@ async def test_dimension_writes_ignored_while_busy(dut) -> None:
 
 @cocotb.test()
 async def test_status_done_w1c(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -265,7 +265,7 @@ async def test_status_done_w1c(dut) -> None:
 @cocotb.test()
 async def test_read_ctrl_and_int_stat_registers(dut) -> None:
     """Read REG_CTRL, REG_INT_STAT, and an unmapped address to hit the read-mux default."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -297,7 +297,7 @@ async def test_read_ctrl_and_int_stat_registers(dut) -> None:
 
 @cocotb.test()
 async def test_perf_and_status_registers(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -350,7 +350,7 @@ async def test_perf_and_status_registers(dut) -> None:
 @cocotb.test()
 async def test_start_while_busy(dut) -> None:
     """Writing CTRL.start while the FSM is in C_BUSY must be ignored."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -383,7 +383,7 @@ async def test_start_while_busy(dut) -> None:
 @cocotb.test()
 async def test_irq_masked_when_disabled(dut) -> None:
     """irq_4 must stay low when INT_EN[0]=0 or irq_en_4=0, even after done."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 
@@ -426,7 +426,7 @@ async def test_irq_masked_when_disabled(dut) -> None:
 @cocotb.test()
 async def test_back_to_back_compute(dut) -> None:
     """Two consecutive start→done cycles must both complete correctly."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_dut(dut)
     apb = CtrlApb(dut)
 

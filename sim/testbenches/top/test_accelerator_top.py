@@ -118,7 +118,7 @@ async def apb_read(dut, addr: int) -> int:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk_in)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     val = int(dut.PRDATA.value)
     await RisingEdge(dut.clk_in)
     dut.PSEL.value = 0
@@ -241,7 +241,7 @@ async def run_submatmul(
 
 @cocotb.test()
 async def test_top_random_matmul(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     for trial, seed in enumerate(MULTI_SEEDS):
@@ -261,7 +261,7 @@ async def test_top_random_matmul(dut) -> None:
 
 @cocotb.test()
 async def test_top_edge_case_matrices(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     for case in EDGE_CASES:
@@ -277,7 +277,7 @@ async def test_top_edge_case_matrices(dut) -> None:
 
 @cocotb.test()
 async def test_top_compact_runtime_tiles(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     cases = [(1, 1, 1), (3, 5, 2), (min(7, M), min(6, N), min(4, K))]
@@ -296,7 +296,7 @@ async def test_top_compact_runtime_tiles(dut) -> None:
 
 @cocotb.test()
 async def test_top_identity(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     # Distinct A values constrained to the signed DATA_W range so they survive
@@ -312,7 +312,7 @@ async def test_top_identity(dut) -> None:
 @cocotb.test()
 async def test_top_4x4_matmul(dut) -> None:
     """4x4 matrix multiply on 16x16 HW via zero-padding, 8-bit inputs."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 4
@@ -332,7 +332,7 @@ async def test_top_4x4_matmul(dut) -> None:
 @cocotb.test()
 async def test_top_8x8_matmul(dut) -> None:
     """8x8 matrix multiply on 16x16 HW via zero-padding, 8-bit inputs."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 8
@@ -352,7 +352,7 @@ async def test_top_8x8_matmul(dut) -> None:
 @cocotb.test()
 async def test_top_4bit_inputs(dut) -> None:
     """16x16 matmul with 4-bit signed inputs sign-extended to 16-bit."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     rng = random.Random(0x0004)
@@ -369,7 +369,7 @@ async def test_top_4bit_inputs(dut) -> None:
 @cocotb.test()
 async def test_top_8bit_inputs(dut) -> None:
     """16x16 matmul with 8-bit signed inputs sign-extended to 16-bit."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     rng = random.Random(0x0008)
@@ -386,7 +386,7 @@ async def test_top_8bit_inputs(dut) -> None:
 @cocotb.test()
 async def test_top_4x4_4bit(dut) -> None:
     """4x4 matmul with 4-bit inputs on 16x16 HW."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 4
@@ -401,7 +401,7 @@ async def test_top_4x4_4bit(dut) -> None:
 @cocotb.test()
 async def test_top_8x8_4bit(dut) -> None:
     """8x8 matmul with 4-bit inputs on 16x16 HW."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     dim = 8
@@ -420,7 +420,7 @@ REG_INT_STAT = 0x14
 @cocotb.test()
 async def test_top_irq_path(dut) -> None:
     """Exercise irq_en_4/ss_ctrl_4/irq_4 toggle and the interrupt register path."""
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     # Drive ss_ctrl_4 to a non-zero value (toggles the port).
@@ -463,7 +463,7 @@ async def test_top_unmapped_region(dut) -> None:
     PADDR[9:8]==2'b11 (e.g. 0x300) matches no subordinate; the top-level
     decoder must still assert PREADY (and PSLVERR) so the bus does not hang.
     """
-    cocotb.start_soon(Clock(dut.clk_in, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
     await reset_top(dut)
 
     unmapped = 0x300
@@ -475,7 +475,7 @@ async def test_top_unmapped_region(dut) -> None:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk_in)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     assert int(dut.PREADY.value) == 1, "PREADY must be high for unmapped read"
     assert int(dut.PSLVERR.value) == 1, "PSLVERR must flag unmapped read"
     await RisingEdge(dut.clk_in)
@@ -490,10 +490,207 @@ async def test_top_unmapped_region(dut) -> None:
     dut.PENABLE.value = 0
     await RisingEdge(dut.clk_in)
     dut.PENABLE.value = 1
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
     assert int(dut.PREADY.value) == 1, "PREADY must be high for unmapped write"
     assert int(dut.PSLVERR.value) == 1, "PSLVERR must flag unmapped write"
     await RisingEdge(dut.clk_in)
     dut.PSEL.value = 0
     dut.PENABLE.value = 0
     dut.PWRITE.value = 0
+
+
+@cocotb.test()
+async def test_top_double_buffer_pipelined(dut) -> None:
+    """Pipelined execution of two matrix multiplications using double buffering."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
+    await reset_top(dut)
+
+    rng = random.Random(0xDBBF)
+    a0 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+    b0 = random_matrix(K, N, DATA_W, rng).astype(np.int64)
+    ref0 = matmul_ref(a0, b0, ACC_W)
+
+    a1 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+    b1 = random_matrix(K, N, DATA_W, rng).astype(np.int64)
+    ref1 = matmul_ref(a1, b1, ACC_W)
+
+    # 1. Program physical dimensions
+    await apb_write(dut, CTRL_BASE | REG_M_DIM, M)
+    await apb_write(dut, CTRL_BASE | REG_N_DIM, N)
+    await apb_write(dut, CTRL_BASE | REG_K_DIM, K)
+
+    # 2. Select Bank 0 for APB writes on matrix_buffer_ab and reset bank 0 pointers
+    # Bit 3 = apb_bank, Bit 4 = sys_bank, Bit 0 = reset pointers
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (0 << 4) | (0 << 3) | 0x01)
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
+
+    # 3. Write Matrix A0 and B0 to Bank 0
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a0.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b0.flatten()))
+
+    # 4. Start computation on Bank 0
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # 5. While Bank 0 is computing, switch APB to Bank 1 and write A1 and B1
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (0 << 4) | (1 << 3) | 0x01)
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a1.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b1.flatten()))
+
+    # 6. Wait for Bank 0 computation to finish
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Bank 0 compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # 7. Start computation on Bank 1, and map C output to sys_bank = 1
+    # For matrix_buffer_ab: sys_bank = 1, apb_bank = 1
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (1 << 4) | (1 << 3) | 0x00)
+    # For matrix_buffer_c: sys_bank = 1, apb_bank = 0 (we read C0 from bank 0) and reset bank 1
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (1 << 4) | (0 << 3) | 0x01)
+    # Start compute
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # 8. While Bank 1 is computing, read back C0 from Bank 0
+    got0 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got0[i, j] = to_signed(word, 32)
+
+    # 9. Wait for Bank 1 computation to finish
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Bank 1 compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # 10. Switch APB to read C1 from Bank 1
+    # matrix_buffer_c: sys_bank = 1, apb_bank = 1
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (1 << 4) | (1 << 3) | 0x00)
+
+    # 11. Read back C1
+    got1 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got1[i, j] = to_signed(word, 32)
+
+    # 12. Verify both results
+    assert np.array_equal(got0, ref0), (
+        f"Double buffer Bank 0 mismatch:\nref=\n{ref0}\ngot=\n{got0}"
+    )
+    assert np.array_equal(got1, ref1), (
+        f"Double buffer Bank 1 mismatch:\nref=\n{ref1}\ngot=\n{got1}"
+    )
+
+
+@cocotb.test()
+async def test_top_weight_reuse(dut) -> None:
+    """Verify weight reuse (REUSE_B) mode and benchmark the cycle savings."""
+    cocotb.start_soon(Clock(dut.clk_in, 10, units="ns").start())
+    await reset_top(dut)
+
+    rng = random.Random(0xCAFE)
+    a0 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+    b0 = random_matrix(K, N, DATA_W, rng).astype(np.int64)
+    a1 = random_matrix(M, K, DATA_W, rng).astype(np.int64)
+
+    ref0 = matmul_ref(a0, b0, ACC_W)
+    ref1 = matmul_ref(a1, b0, ACC_W)  # Reuses b0!
+
+    # Program physical dimensions
+    await apb_write(dut, CTRL_BASE | REG_M_DIM, M)
+    await apb_write(dut, CTRL_BASE | REG_N_DIM, N)
+    await apb_write(dut, CTRL_BASE | REG_K_DIM, K)
+
+    # =========================================================================
+    # Run 1: Standard GEMM (Write A0 and B0)
+    # =========================================================================
+    t0_start = cocotb.utils.get_sim_time(units="ns")
+
+    # Select Bank 0 and reset pointers (normal mode, REUSE_B = 0)
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (0 << 5) | (0 << 4) | (0 << 3) | 0x01)
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
+
+    # Write A0 and B0
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a0.flatten()))
+    await write_matrix(dut, AB_BASE, OFF_B_DATA, list(b0.flatten()))
+
+    # Trigger compute
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # Poll done
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Run 1 compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # Read back C0
+    got0 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got0[i, j] = to_signed(word, 32)
+
+    t0_end = cocotb.utils.get_sim_time(units="ns")
+    cycles_standard = (t0_end - t0_start) / 10
+
+    # =========================================================================
+    # Run 2: Weight Reuse GEMM (Write A1 only, reuse B0)
+    # =========================================================================
+    t1_start = cocotb.utils.get_sim_time(units="ns")
+
+    # Step 1: Set REUSE_B = 1 for Bank 0 (apb_bank = 0, sys_bank = 0)
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x00)
+    # Step 2: Trigger reset pointers (bit 0 = 1). Since REUSE_B is active, B pointers will not reset.
+    await apb_write(dut, AB_BASE | OFF_AB_CTRL, (1 << 5) | (0 << 4) | (0 << 3) | 0x01)
+    # Reset read pointer in output buffer
+    await apb_write(dut, C_BASE | OFF_C_CTRL, (0 << 4) | (0 << 3) | 0x01)
+
+    # Write A1 only! Skip B entirely.
+    await write_matrix(dut, AB_BASE, OFF_A_DATA, list(a1.flatten()))
+
+    # Trigger compute
+    await apb_write(dut, CTRL_BASE | REG_CTRL, CTRL_START)
+
+    # Poll done
+    for _ in range(2000):
+        s = await apb_read(dut, CTRL_BASE | REG_STATUS)
+        if s & STATUS_DONE:
+            break
+    else:
+        raise AssertionError("Run 2 (reuse) compute done was never asserted")
+    await apb_write(dut, CTRL_BASE | REG_STATUS, STATUS_DONE)
+
+    # Read back C1
+    got1 = np.zeros((M, N), dtype=np.int64)
+    for i in range(M):
+        for j in range(N):
+            word = await apb_read(dut, C_BASE | OFF_C_DATA)
+            got1[i, j] = to_signed(word, 32)
+
+    t1_end = cocotb.utils.get_sim_time(units="ns")
+    cycles_reuse = (t1_end - t1_start) / 10
+
+    # Verify both results
+    assert np.array_equal(got0, ref0), "Run 0 mismatch"
+    assert np.array_equal(got1, ref1), "Run 1 (reuse) mismatch"
+
+    cocotb.log.info("== PERFORMANCE COMPARISON ==")
+    cocotb.log.info(
+        f"Standard GEMM cycle count (Write A & B + Compute + Read C): {cycles_standard:.0f} cycles"
+    )
+    cocotb.log.info(
+        f"Weight Reuse GEMM cycle count (Write A only + Compute + Read C): {cycles_reuse:.0f} cycles"
+    )
+    cocotb.log.info(
+        f"Cycle savings: {cycles_standard - cycles_reuse:.0f} cycles ({(cycles_standard - cycles_reuse) / cycles_standard * 100:.1f}%)"
+    )

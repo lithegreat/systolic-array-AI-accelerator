@@ -152,7 +152,6 @@ package apb_pkg;
                 item.data = vif.driver_cb.PRDATA;
 
             // ---- De-assert --------------------------------------------------
-            @(vif.driver_cb);
             vif.driver_cb.PSEL    <= 1'b0;
             vif.driver_cb.PENABLE <= 1'b0;
         endtask
