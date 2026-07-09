@@ -44,6 +44,10 @@ xsim.dir/
 work/
 vsim.wlf
 
+# QuestaSim tool-generated files (never commit; regenerated per lab-server run)
+modelsim.ini
+transcript
+
 # Synthesis and Place & Route artifacts (NEVER commit large netlists to Git)
 *.rpt
 *.summary

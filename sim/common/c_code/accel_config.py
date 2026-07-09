@@ -73,7 +73,7 @@ VARIANTS: dict[str, AcceleratorConfig] = {
         k=32,
         data_w=8,
         acc_w=32,
-        description="Temporary 32x32 test variant",
+        description="32x32 INT8 accelerator build for larger-tile GEMM testing.",
     ),
     "int8_16x16": AcceleratorConfig(
         name="int8_16x16",
