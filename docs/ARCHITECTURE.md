@@ -5,7 +5,7 @@
 > diving into any module; then follow the links into the
 > [interface contracts](interface/README.md) or the code.
 
-Last reviewed: 2026-07-02
+Last reviewed: 2026-07-08
 
 ## Bird's-eye view
 
@@ -92,7 +92,7 @@ remain) · **WIP** · **Planned**.
 | Area / layer | Status | Gap to close next |
 | --- | --- | --- |
 | Interface contracts | Stable | Keep in lock-step with any RTL port change. |
-| RTL — control_unit | Working | Broaden IRQ/status corner-case coverage. |
+| RTL — control_unit | Working | Formally verified (SymbiYosys k-induction, see [verification/control_unit_formal.md](verification/control_unit_formal.md)); found a one-cycle `STATUS.busy`/soft-reset race (TD-7) still to fix. |
 | RTL — mac_pe | Stable | — |
 | RTL — systolic_array | Working | Stall/back-pressure stress tests. |
 | RTL — matrix_buffer_ab | Working | Overflow/over-run path coverage. |

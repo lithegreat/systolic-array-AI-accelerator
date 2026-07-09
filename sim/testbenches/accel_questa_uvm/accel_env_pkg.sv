@@ -282,47 +282,49 @@ package accel_env_pkg;
             // Reset A/B write pointers
             do_write(ADDR_AB_CTRL, 32'h1);
 
-            // Write A (row-major, packed)
-            words = a_flat.size() / per_word;
-            for (int i = 0; i < words; i++) begin
-                word = '0;
-                case (data_w)
-                    16: begin
-                        word[15:0]  = a_flat[i*2];
-                        word[31:16] = a_flat[i*2+1];
-                    end
-                    8: begin
-                        word[ 7: 0] = a_flat[i*4  ][7:0];
-                        word[15: 8] = a_flat[i*4+1][7:0];
-                        word[23:16] = a_flat[i*4+2][7:0];
-                        word[31:24] = a_flat[i*4+3][7:0];
-                    end
-                    32: word = a_flat[i];
-                    default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
-                endcase
-                do_write(ADDR_A_DATA, word);
-            end
-
-            // Write B (row-major, packed)
-            words = b_flat.size() / per_word;
-            for (int i = 0; i < words; i++) begin
-                word = '0;
-                case (data_w)
-                    16: begin
-                        word[15:0]  = b_flat[i*2];
-                        word[31:16] = b_flat[i*2+1];
-                    end
-                    8: begin
-                        word[ 7: 0] = b_flat[i*4  ][7:0];
-                        word[15: 8] = b_flat[i*4+1][7:0];
-                        word[23:16] = b_flat[i*4+2][7:0];
-                        word[31:24] = b_flat[i*4+3][7:0];
-                    end
-                    32: word = b_flat[i];
-                    default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
-                endcase
-                do_write(ADDR_B_DATA, word);
-            end
+             // Write A (row-major, packed)
+             words = (a_flat.size() + per_word - 1) / per_word;
+             for (int i = 0; i < words; i++) begin
+                 word = '0;
+                 case (data_w)
+                     16: begin
+                         word[15:0]  = a_flat[i*2];
+                         if (i*2+1 < a_flat.size())
+                             word[31:16] = a_flat[i*2+1];
+                     end
+                     8: begin
+                         word[ 7: 0] = a_flat[i*4  ][7:0];
+                         if (i*4+1 < a_flat.size()) word[15: 8] = a_flat[i*4+1][7:0];
+                         if (i*4+2 < a_flat.size()) word[23:16] = a_flat[i*4+2][7:0];
+                         if (i*4+3 < a_flat.size()) word[31:24] = a_flat[i*4+3][7:0];
+                     end
+                     32: word = a_flat[i];
+                     default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
+                 endcase
+                 do_write(ADDR_A_DATA, word);
+             end
+ 
+             // Write B (row-major, packed)
+             words = (b_flat.size() + per_word - 1) / per_word;
+             for (int i = 0; i < words; i++) begin
+                 word = '0;
+                 case (data_w)
+                     16: begin
+                         word[15:0]  = b_flat[i*2];
+                         if (i*2+1 < b_flat.size())
+                             word[31:16] = b_flat[i*2+1];
+                     end
+                     8: begin
+                         word[ 7: 0] = b_flat[i*4  ][7:0];
+                         if (i*4+1 < b_flat.size()) word[15: 8] = b_flat[i*4+1][7:0];
+                         if (i*4+2 < b_flat.size()) word[23:16] = b_flat[i*4+2][7:0];
+                         if (i*4+3 < b_flat.size()) word[31:24] = b_flat[i*4+3][7:0];
+                     end
+                     32: word = b_flat[i];
+                     default: `uvm_fatal("CFG", $sformatf("Unsupported DATA_W=%0d", data_w))
+                 endcase
+                 do_write(ADDR_B_DATA, word);
+             end
 
             `uvm_info("LOAD_AB",
                 $sformatf("Loaded A[%0d] B[%0d] (DATA_W=%0d, %0d elem/word)",
@@ -331,6 +333,37 @@ package accel_env_pkg;
         endtask
 
     endclass : accel_load_ab_seq
+
+    // =========================================================================
+    // accel_setup_dims_seq  –  program M/N/K dimension registers
+    //
+    // Must be run BEFORE accel_load_ab_seq because the RTL's PSLVERR logic
+    // in matrix_buffer_ab checks  a_wrow_q >= cfg_m_dim  and
+    // b_wrow_q >= cfg_k_dim.  cfg_m_dim/cfg_k_dim default to 0 at reset,
+    // so any A/B data write would be rejected as SLVERR unless dimensions
+    // are programmed first.
+    // =========================================================================
+    class accel_setup_dims_seq extends accel_base_seq;
+        `uvm_object_utils(accel_setup_dims_seq)
+
+        int unsigned m = 4;
+        int unsigned n = 4;
+        int unsigned k = 4;
+
+        function new(string name = "accel_setup_dims_seq");
+            super.new(name);
+        endfunction
+
+        virtual task body();
+            do_write(ADDR_M_DIM, 32'(m));
+            do_write(ADDR_N_DIM, 32'(n));
+            do_write(ADDR_K_DIM, 32'(k));
+            `uvm_info("SETUP_DIMS",
+                $sformatf("Programmed dims: M=%0d N=%0d K=%0d", m, n, k),
+                UVM_MEDIUM)
+        endtask
+
+    endclass : accel_setup_dims_seq
 
     // =========================================================================
     // accel_compute_seq  –  program dims, assert start, poll STATUS.done

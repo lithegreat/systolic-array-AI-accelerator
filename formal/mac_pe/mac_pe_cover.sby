@@ -1,0 +1,23 @@
+# mac_pe_cover.sby -- reachability sanity check: confirm the accumulate,
+# clear, and passthrough paths are all reachable (pairs with mac_pe.sby so
+# a PASS there is not vacuous).
+#
+# Run from this directory:
+#   sby -f mac_pe_cover.sby
+
+[options]
+mode cover
+depth 10
+
+[engines]
+smtbmc z3
+
+[script]
+exec -- python3 yosys_shim.py mac_pe.sv mac_pe.yosys.sv mac_pe_formal.svh
+read_verilog -sv mac_pe.yosys.sv
+prep -top mac_pe
+
+[files]
+../../rtl/MAC/mac_pe.sv
+mac_pe_formal.svh
+../scripts/yosys_shim.py

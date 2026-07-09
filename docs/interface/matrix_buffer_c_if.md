@@ -113,8 +113,8 @@ flowchart TB
 
 | Offset | Register | Access | Description |
 | --- | --- | --- | --- |
-| `0x00` | `MAT_C_DATA` | R/O | Read the next stored C element; read pointer auto-increments. |
-| `0x80` | `MAT_CTRL` | R/W | Bit `0`: reset capture count and read pointer. Read bit `1`: `capture_full`. |
+| `0x00` | `MAT_C_DATA` | R/O | Read the next stored C element; read pointer auto-increments (selected bank). |
+| `0x80` | `MAT_CTRL` | R/W | Bit `0`: reset capture count and read pointer of the APB-selected bank (bit `3`). Read bit `1`: `capture_full` (selected bank). Bit `3` (R/W): APB read bank select (`0`/`1`). Bit `4` (R/W): capture bank select — which bank the systolic array's drained rows are written into. |
 
 ## Behavior
 
@@ -124,7 +124,19 @@ flowchart TB
 - Reading `MAT_C_DATA` returns the low `APB_DW` bits of the stored `ACC_W` value.
 - A runtime C row is written in a single cycle (columns `0..N_DIM-1`).
 
+### Double buffering (2-bank)
+
+- Storage is physically duplicated into two banks (`mem_c[2][M][N]`) with
+   independent read pointers and capture-row counters per bank.
+- `MAT_CTRL[4]` selects which bank captures rows drained from the systolic
+   array; `MAT_CTRL[3]` selects which bank `MAT_C_DATA` reads (and which bank
+   `MAT_CTRL[0]` resets). Software can read out a completed bank over APB
+   while the other bank captures the next tile's results.
+- Address indexing into `mem_c` uses the row/column registers directly (no
+   runtime multiply/divide), replacing the earlier linear `row*width + col`
+   addressing scheme.
+
 ## Notes
 
-- `c_in_ready` and `capture_full` are internal status conditions, not module ports; software observes "full" via `MAT_CTRL` bit `1`.
+- `c_in_ready` and `capture_full` are internal status conditions, not module ports; software observes "full" via `MAT_CTRL` bit `1` (of the bank selected by `MAT_CTRL[4]`).
 - In the top-level integration the array's `out_ready` is tied high, so the buffer must be reset (via `MAT_CTRL[0]`) before each new tile to accept all `M` rows.

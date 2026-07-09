@@ -227,14 +227,19 @@ module control_unit
                 reg_int_stat               <= '0;
                 reg_ctrl[CTRL_SOFTRST_BIT] <= 1'b0;
                 perf_active                 <= 1'b0;
-            end
+            end else begin
+                // STATUS register.
+                reg_status[STATUS_BUSY_BIT] <= (cstate_d != C_IDLE);
+                if (cstate_q == C_DONE)
+                    reg_status[STATUS_DONE_BIT] <= 1'b1;
+                else if (apb_write_strobe && reg_off == REG_STATUS[7:0] && PWDATA[STATUS_DONE_BIT])
+                    reg_status[STATUS_DONE_BIT] <= 1'b0;
 
-            // STATUS register.
-            reg_status[STATUS_BUSY_BIT] <= (cstate_d != C_IDLE);
-            if (cstate_q == C_DONE)
-                reg_status[STATUS_DONE_BIT] <= 1'b1;
-            else if (apb_write_strobe && reg_off == REG_STATUS[7:0] && PWDATA[STATUS_DONE_BIT])
-                reg_status[STATUS_DONE_BIT] <= 1'b0;
+                // INT_STAT: set on done event; W1C from SW.
+                if (cstate_q == C_DONE) reg_int_stat[INT_DONE_BIT] <= 1'b1;
+                else if (apb_write_strobe && reg_off == REG_INT_STAT[7:0] && PWDATA[INT_DONE_BIT])
+                    reg_int_stat[INT_DONE_BIT] <= 1'b0;
+            end
 
             // Runtime dimension registers. Writes are accepted only while idle;
             // this keeps an in-flight tile's compact layout stable.
@@ -252,11 +257,6 @@ module control_unit
 
             // INT_EN: simple R/W.
             if (apb_write_strobe && reg_off == REG_INT_EN[7:0]) reg_int_en <= PWDATA;
-
-            // INT_STAT: set on done event; W1C from SW.
-            if (cstate_q == C_DONE) reg_int_stat[INT_DONE_BIT] <= 1'b1;
-            else if (apb_write_strobe && reg_off == REG_INT_STAT[7:0] && PWDATA[INT_DONE_BIT])
-                reg_int_stat[INT_DONE_BIT] <= 1'b0;
 
             if (perf_clear_w) begin
                 perf_cycles           <= '0;

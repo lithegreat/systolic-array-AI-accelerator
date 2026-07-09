@@ -66,6 +66,15 @@ class AcceleratorConfig:
 DEFAULT_VARIANT = "int8_16x16"
 
 VARIANTS: dict[str, AcceleratorConfig] = {
+    "int8_32x32": AcceleratorConfig(
+        name="int8_32x32",
+        m=32,
+        n=32,
+        k=32,
+        data_w=8,
+        acc_w=32,
+        description="32x32 INT8 accelerator build for larger-tile GEMM testing.",
+    ),
     "int8_16x16": AcceleratorConfig(
         name="int8_16x16",
         m=16,

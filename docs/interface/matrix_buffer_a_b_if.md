@@ -124,7 +124,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | `0x00` | `MAT_A_DATA` | W/O | Write packed Matrix A elements; write pointer auto-increments. |
 | `0x40` | `MAT_B_DATA` | W/O | Write packed Matrix B elements; write pointer auto-increments. |
-| `0x80` | `MAT_CTRL` | R/W | Bit `0`: reset both write pointers. Read bit `1`: A full. Read bit `2`: B full. |
+| `0x80` | `MAT_CTRL` | R/W | Bit `0`: reset write pointers of the currently APB-selected bank (write bit `3`). Read bit `1`: A full (selected bank). Read bit `2`: B full (selected bank). Bit `3` (R/W): APB write bank select (`0`/`1`). Bit `4` (R/W): streaming-read bank select fed to the systolic array. Bit `5` (R/W): reuse-B flag for the selected write bank (when set, `MAT_CTRL[0]` does not clear that bank's B write pointer, allowing B to be reused across ticks while A is refreshed). |
 
 APB access rules:
 
@@ -156,6 +156,21 @@ Example for `DATA_W = 8`: `PWDATA = (el_3 << 24) | (el_2 << 16) | (el_1 << 8) | 
 - Beat `k` drives `a_col[i] = A[i,k]` for `i < M_DIM`, otherwise zero, and
    `b_row[j] = B[k,j]` for `j < N_DIM`, otherwise zero.
 - A beat is consumed only when `mat_valid && sys_ready`.
+
+### Double buffering (2-bank)
+
+- Storage is physically duplicated into two banks (`mem_a[2][M][K]`,
+   `mem_b[2][K][N]`) with independent write-pointer pairs per bank.
+- `MAT_CTRL[3]` selects which bank subsequent `MAT_A_DATA`/`MAT_B_DATA` writes
+   (and `MAT_CTRL[0]` resets) target; `MAT_CTRL[4]` selects which bank is
+   streamed to the systolic array on `mat_start`. Software can therefore stage
+   the next tile into the idle bank while the current bank streams/computes.
+- `MAT_CTRL[5]` (reuse-B), when set for a bank, makes `MAT_CTRL[0]` skip
+   clearing that bank's B write pointer/content, so a B matrix already loaded
+   there is reused across multiple A tiles without re-writing it.
+- Address indexing into `mem_a`/`mem_b` uses the row/column registers directly
+   (no runtime multiply/divide), replacing the earlier linear
+   `row*width + col` addressing scheme.
 
 ## Notes
 
