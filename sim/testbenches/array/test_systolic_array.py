@@ -63,7 +63,7 @@ async def run_one_tile(
     dut.start.value = 1
     await RisingEdge(dut.clk)
     dut.start.value = 0
-    await Timer(1, unit="ns")
+    await Timer(1, units="ns")
 
     # Feed K column slices of A and row slices of B.
     captured = {}
@@ -95,7 +95,7 @@ async def run_one_tile(
             dut.b_row.value = 0
 
         # Sample combinational handshake values BEFORE the edge.
-        await Timer(1, unit="ns")
+        await Timer(1, units="ns")
         in_ready_now = int(dut.in_ready.value)
         in_valid_now = int(dut.in_valid.value)
         out_valid_now = int(dut.out_valid.value)
@@ -136,7 +136,7 @@ async def run_one_tile(
 
 @cocotb.test()
 async def test_identity_b_returns_a(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     # A values constrained to the signed DATA_W range so they survive element
     # packing unchanged (identity B returns A). Plain 1..M*K ramp for DATA_W>=9;
@@ -148,7 +148,7 @@ async def test_identity_b_returns_a(dut) -> None:
 
 @cocotb.test()
 async def test_random_matmul(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     rng = random.Random(0xA11CE)
     for _ in range(5):
@@ -160,7 +160,7 @@ async def test_random_matmul(dut) -> None:
 
 @cocotb.test()
 async def test_back_to_back(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     rng = random.Random(0xBABE)
     for _ in range(3):
@@ -171,7 +171,7 @@ async def test_back_to_back(dut) -> None:
 
 @cocotb.test()
 async def test_backpressure(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
     rng = random.Random(0xDEAD)
     a = random_matrix(M, K, DATA_W, rng)

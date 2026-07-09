@@ -46,6 +46,9 @@ docs/
     └── control_unit_formal.md    # SymbiYosys formal verification of control_unit
 ```
 
+See also: [performance_result.md](performance_result.md) — tiled GEMM performance
+comparison, double-buffering speedup, and FPGA utilization report.
+
 ## Conventions
 
 - **Filenames**: lowercase `snake_case`. Interface specs use the `_if.md` suffix

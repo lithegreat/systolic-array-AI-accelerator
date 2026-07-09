@@ -48,7 +48,7 @@ class ApbMaster:
         self._set("PENABLE", 0)
         await RisingEdge(self.dut.clk)
         self._set("PENABLE", 1)
-        await Timer(1, unit="ns")
+        await Timer(1, units="ns")
         rdata = int(self._sig("PRDATA").value)
         await RisingEdge(self.dut.clk)
         self._set("PSEL", 0)
