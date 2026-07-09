@@ -87,15 +87,15 @@ module tb_top;
             "vif",
             apb);
 
+        // Dispatch the test selected via +UVM_TESTNAME
+        run_test();
+    end
+
+    initial begin
         // Assert reset for 20 clock cycles (200 ns), then release
         reset_int = 1'b1;
         repeat (20) @(posedge clk);
         reset_int = 1'b0;
-        @(posedge clk);
-
-        // Dispatch the test selected via +UVM_TESTNAME (default: no default –
-        // +UVM_TESTNAME must be supplied on the vsim command line).
-        run_test();
     end
 
     // -------------------------------------------------------------------------

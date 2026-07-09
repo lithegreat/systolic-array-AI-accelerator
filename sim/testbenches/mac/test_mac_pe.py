@@ -49,7 +49,7 @@ def _check(dut, golden: MacPeGolden) -> None:
 
 @cocotb.test()
 async def test_reset_clears_outputs(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await _reset(dut)
     assert int(dut.pe_out.value) == 0
     assert int(dut.a_out.value) == 0
@@ -58,7 +58,7 @@ async def test_reset_clears_outputs(dut) -> None:
 
 @cocotb.test()
 async def test_directed_simple_accumulate(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await _reset(dut)
     golden = MacPeGolden(DATA_W, ACC_W)
 
@@ -71,13 +71,13 @@ async def test_directed_simple_accumulate(dut) -> None:
         dut.clear_acc.value = clr
         await RisingEdge(dut.clk)
         golden.step(a, b, en=1, clear_acc=clr)
-        await Timer(1, unit="ns")  # let combinational outputs settle
+        await Timer(1, units="ns")  # let combinational outputs settle
         _check(dut, golden)
 
 
 @cocotb.test()
 async def test_random_stream(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await _reset(dut)
     golden = MacPeGolden(DATA_W, ACC_W)
     rng = random.Random(0xC0FFEE)
@@ -94,13 +94,13 @@ async def test_random_stream(dut) -> None:
         dut.clear_acc.value = clr
         await RisingEdge(dut.clk)
         golden.step(a, b, en=en, clear_acc=clr)
-        await Timer(1, unit="ns")
+        await Timer(1, units="ns")
         _check(dut, golden)
 
 
 @cocotb.test()
 async def test_signed_extremes(dut) -> None:
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await _reset(dut)
     golden = MacPeGolden(DATA_W, ACC_W)
     lo = -(1 << (DATA_W - 1))
@@ -113,5 +113,5 @@ async def test_signed_extremes(dut) -> None:
         dut.clear_acc.value = clr
         await RisingEdge(dut.clk)
         golden.step(a, b, en=1, clear_acc=clr)
-        await Timer(1, unit="ns")
+        await Timer(1, units="ns")
         _check(dut, golden)

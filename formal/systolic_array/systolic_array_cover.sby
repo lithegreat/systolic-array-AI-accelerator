@@ -1,0 +1,28 @@
+# systolic_array_cover.sby -- reachability sanity check: confirms S_RUN,
+# S_DRAIN, and S_DONE are all reachable with M=N=K=2 parameters.
+# Pairs with systolic_array.sby so a PASS there is not vacuous.
+#
+# Run from this directory:
+#   sby -f systolic_array_cover.sby
+
+[options]
+mode cover
+depth 20
+
+[engines]
+smtbmc z3
+
+[script]
+exec -- python3 yosys_shim.py systolic_array.sv systolic_array.yosys.sv systolic_array_formal.svh
+read_verilog -sv skew_shift.sv
+read_verilog -sv mac_pe.sv
+read_verilog -sv systolic_array.yosys.sv
+chparam -set M 2 -set N 2 -set K 2 -set DATA_W 8 -set ACC_W 32 systolic_array
+prep -top systolic_array
+
+[files]
+../../rtl/array/systolic_array.sv
+../../rtl/MAC/mac_pe.sv
+../../rtl/array/skew_shift.sv
+systolic_array_formal.svh
+../scripts/yosys_shim.py

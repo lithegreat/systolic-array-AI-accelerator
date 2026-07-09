@@ -27,7 +27,7 @@ module mac_pe #(
 );
 
     logic signed [ACC_W-1:0] acc_q;
-    logic signed [2*DATA_W-1:0] product;
+    (* use_dsp = "yes" *) logic signed [2*DATA_W-1:0] product;
 
     assign product = a_in * b_in;
     assign pe_out  = acc_q;

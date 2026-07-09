@@ -15,23 +15,27 @@ Module pin/protocol contracts live in [docs/interface/](docs/interface/README.md
 
 ## Table of contents
 
-- [Prerequisites](#prerequisites)
-- [Setup](#setup)
-- [Run the tests locally](#run-the-tests-locally)
-  - [1. Standalone accelerator sim (fastest)](#1-standalone-accelerator-sim-fastest)
-  - [2. cocotb regression + coverage](#2-cocotb-regression--coverage)
-  - [3. Full-SoC functional sim (CPU in-loop, Verilator)](#3-full-soc-functional-sim-cpu-in-loop-verilator)
-  - [4. UVM testbenches](#4-uvm-testbenches)
-- [Run on the lab server](#run-on-the-lab-server)
-  - [One-time lab setup](#one-time-lab-setup)
-  - [QuestaSim flow (CPU in-loop)](#questasim-flow-cpu-in-loop)
-  - [FPGA flow (PYNQ-Z1)](#fpga-flow-pynq-z1)
-  - [SV UVM (QuestaSim)](#sv-uvm-questasim)
-- [Project layout](#project-layout)
-- [Architecture at a glance](#architecture-at-a-glance)
-- [Contributing (GitLab workflow)](#contributing-gitlab-workflow)
-- [CI and pre-commit](#ci-and-pre-commit)
-- [Troubleshooting](#troubleshooting)
+- [AI Accelerator for Didactic SoC](#ai-accelerator-for-didactic-soc)
+  - [Table of contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Setup](#setup)
+  - [Run the tests locally](#run-the-tests-locally)
+    - [1. Standalone accelerator sim (fastest)](#1-standalone-accelerator-sim-fastest)
+    - [2. cocotb regression + coverage](#2-cocotb-regression--coverage)
+    - [3. Full-SoC functional sim (CPU in-loop, Verilator)](#3-full-soc-functional-sim-cpu-in-loop-verilator)
+    - [4. UVM testbenches](#4-uvm-testbenches)
+      - [4a. pyuvm (Verilator, local)](#4a-pyuvm-verilator-local)
+    - [5. Formal verification (SymbiYosys)](#5-formal-verification-symbiyosys)
+  - [Run on the lab server](#run-on-the-lab-server)
+    - [One-time lab setup](#one-time-lab-setup)
+    - [QuestaSim flow (CPU in-loop)](#questasim-flow-cpu-in-loop)
+    - [FPGA flow (PYNQ-Z1)](#fpga-flow-pynq-z1)
+    - [SV UVM (QuestaSim)](#sv-uvm-questasim)
+  - [Project layout](#project-layout)
+  - [Architecture at a glance](#architecture-at-a-glance)
+  - [Contributing (GitLab workflow)](#contributing-gitlab-workflow)
+  - [CI and pre-commit](#ci-and-pre-commit)
+  - [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -176,6 +180,33 @@ make M=8 N=8 K=8  # 8×8 tile
 Expected: 4 tests pass (`AccelZeroTest`, `AccelIdentityTest`,
 `AccelCheckerboardTest`, `AccelRandomTest`).
 
+### 5. Formal verification (SymbiYosys)
+
+SVA properties for `control_unit`'s compute FSM, APB register-file invariants,
+and soft-reset/interrupt behaviour, proved with
+[SymbiYosys](https://github.com/YosysHQ/sby) (Yosys + an SMT solver). License-free,
+no SoC/FPGA required. Details, tool-limitation workarounds, and a real bug found
+this way: [formal/control_unit/control_unit_formal.svh](formal/control_unit/control_unit_formal.svh).
+
+Install once (not yet in a CI image):
+
+```bash
+sudo dnf install -y yosys z3          # or apt install yosys z3 on Debian/Ubuntu
+git clone --depth 1 https://github.com/YosysHQ/sby.git /tmp/sby
+cd /tmp/sby && sudo make install PREFIX=/usr/local
+```
+
+Run:
+
+```bash
+cd formal/control_unit
+sby -f control_unit.sby          # k-induction proof of all properties (PASS/FAIL)
+sby -f control_unit_cover.sby    # reachability sanity check (ISSUE/BUSY/DONE hit)
+```
+
+Expected: both print `DONE (PASS, rc=0)`. Work directories
+(`control_unit/`, `control_unit_cover/`) are generated artifacts, gitignored.
+
 ## Run on the lab server
 
 The CPU-in-loop QuestaSim and FPGA flows run on the TUM lab server
@@ -282,6 +313,7 @@ Expected: 5 tests pass (`accel_zero_test`, `accel_identity_test`,
 | `sim/testbenches/` | cocotb + Verilator testbenches, per module. |
 | `sim/scripts/` | Standalone sim runners (`run_verilator.sh`, `run_xsim.sh`) + `Makefile.common`. |
 | `sim/common/` | Shared Python helpers and golden/reference models (incl. `c_code/` GEMM model + vector generator). |
+| `formal/` | SymbiYosys formal verification: SVA properties + `.sby` configs, per module. |
 | `sw/` | C drivers/tests for the RISC-V Ibex core. |
 | `fpga/`, `asic/` | FPGA constraints / Vivado project, and GF 22 nm FDX scripts/reports. |
 | `scripts/` | CI convention/doc checkers and the QuestaSim lab-server runner. |
