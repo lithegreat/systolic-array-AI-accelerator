@@ -16,11 +16,13 @@ module skew_shift #(
     output logic signed [W-1:0]   d_out
 );
 
+    localparam int unsigned DEPTH_SAFE = (DEPTH > 0) ? DEPTH : 1;
+
     generate
         if (DEPTH == 0) begin : g_passthrough
             assign d_out = d_in;
         end else begin : g_chain
-            logic signed [W-1:0] sr [DEPTH];
+            logic signed [W-1:0] sr [DEPTH_SAFE];
             always_ff @(posedge clk) begin
                 if (!rst_n) begin
                     for (int d = 0; d < DEPTH; d++) sr[d] <= '0;
