@@ -73,3 +73,8 @@ signoff_*
 *.spef
 *.spef.gz
 
+# Local reference and exercise files (never commit)
+lab5/
+*.pdf
+
+
