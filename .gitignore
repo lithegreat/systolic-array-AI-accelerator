@@ -57,3 +57,24 @@ transcript
 # CI: prebaked full-SoC dependency snapshot (generated, ~18M; never commit).
 # Regenerate with: cd Didactic-SoC && tar czf ../ci/soc-deps.tar.gz .bender vendor_ips
 ci/soc-deps.tar.gz
+
+# Backend EDA tool generated artifacts (Fusion Compiler / ICV / NDA compliance)
+*.dlib/
+*.dlib
+asic/flow/work/*
+!asic/flow/work/.gitkeep
+asic/reports/*
+!asic/reports/.gitkeep
+asic/results/*
+!asic/results/.gitkeep
+signoff_*
+*.gds
+*.oasis
+*.spef
+*.spef.gz
+
+# Local reference and exercise files (never commit)
+lab5/
+*.pdf
+
+
