@@ -9,6 +9,11 @@
 
 ## Overview
 
+The default module below remains register-backed. The optional
+`matrix_buffer_c_sram` adds `c_in_ready`/`busy`, APB read wait states and explicit
+supplies; the top honors output backpressure and waits for storage commit
+before reporting completion. See [GF180 SRAM interface](gf180_sram_if.md).
+
 `matrix_buffer_c` captures the drained outputs of the systolic array and stores
 them row-major for software read-back over APB. The array drains one runtime C
 row per beat: each accepted beat carries a row index `c_row_in` and a packed row

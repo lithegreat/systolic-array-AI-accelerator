@@ -14,6 +14,7 @@ handshake.
 | Systolic array (M×N PE grid) | [systolic_array_if.md](systolic_array_if.md) | Zhong (#3) |
 | Matrix A &amp; B buffer | [matrix_buffer_a_b_if.md](matrix_buffer_a_b_if.md) | Cao (#4) |
 | Matrix C buffer | [matrix_buffer_c_if.md](matrix_buffer_c_if.md) | Shang (#5) |
+| Optional GF180 SRAM storage | [gf180_sram_if.md](gf180_sram_if.md) | shared |
 
 ## Conventions
 

@@ -17,7 +17,8 @@ module subsystem_12 #(
     parameter int unsigned ACC_W    = 32,
     parameter int unsigned M        = 16,
     parameter int unsigned N        = 16,
-    parameter int unsigned K        = 16
+    parameter int unsigned K        = 16,
+    parameter bit USE_GF180_SRAM    = 1'b0
 ) (
     // APB Subordinate Interface
     input  logic [APB_AW-1:0]   PADDR,
@@ -40,7 +41,9 @@ module subsystem_12 #(
     // PMOD GPIO (unused by accelerator, tied off)
     input  logic [NUM_GPIO-1:0] pmod_gpi,
     output logic [NUM_GPIO-1:0] pmod_gpio_oe,
-    output logic [NUM_GPIO-1:0] pmod_gpo
+    output logic [NUM_GPIO-1:0] pmod_gpo,
+    inout  wire                VDD,
+    inout  wire                VSS
 );
 
     // Accelerator core instantiation
@@ -51,7 +54,8 @@ module subsystem_12 #(
         .N      (N),
         .K      (K),
         .APB_AW (10),
-        .APB_DW (APB_DW)
+        .APB_DW (APB_DW),
+        .USE_GF180_SRAM(USE_GF180_SRAM)
     ) i_accelerator_top (
         .clk_in    (clk),
         .reset_int (~reset_n),       // accelerator_top expects active-high reset
@@ -65,7 +69,9 @@ module subsystem_12 #(
         .PSLVERR   (PSLVERR),
         .irq_en_4  (irq_en),
         .ss_ctrl_4 (8'b0),
-        .irq_4     (irq)
+        .irq_4     (irq),
+        .VDD       (VDD),
+        .VSS       (VSS)
     );
 
     // Unused GPIO signals safely tied off

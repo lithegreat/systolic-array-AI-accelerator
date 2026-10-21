@@ -115,7 +115,9 @@ module tb_accel;
         .PSLVERR   (PSLVERR),
         .irq_en_4  (irq_en_4),
         .ss_ctrl_4 (ss_ctrl_4),
-        .irq_4     (irq_4)
+        .irq_4     (irq_4),
+        .VDD       (),
+        .VSS       ()
     );
 
     // -------------------------------------------------------------------------

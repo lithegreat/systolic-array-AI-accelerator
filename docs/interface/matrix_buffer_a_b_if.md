@@ -10,6 +10,11 @@
 
 ## Overview
 
+The default module below remains register-backed. The optional
+`matrix_buffer_ab_sram` implementation has the same register map and
+ready/valid data meaning, but inserts APB write waits and gathers vectors
+serially; see [GF180 SRAM interface](gf180_sram_if.md).
+
 `matrix_buffer_ab` stores Matrix A and Matrix B behind a 32-bit APB subordinate
 port, then streams one A column and one B row per accepted beat into the
 output-stationary systolic array. Physical storage is fixed per build (`M`, `N`,

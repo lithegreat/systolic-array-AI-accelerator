@@ -73,7 +73,9 @@ module tb_top;
         // SoC sideband (not used by testbench)
         .irq_en_4 (1'b0),
         .ss_ctrl_4(8'h00),
-        .irq_4    ()     // intentionally left unconnected
+        .irq_4    (),
+        .VDD      (),
+        .VSS      ()
     );
 
     // -------------------------------------------------------------------------

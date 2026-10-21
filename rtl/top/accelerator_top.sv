@@ -19,7 +19,8 @@ module accelerator_top
     parameter int unsigned N      = 16,
     parameter int unsigned K      = 16,
     parameter int unsigned APB_AW = 10,
-    parameter int unsigned APB_DW = 32
+    parameter int unsigned APB_DW = 32,
+    parameter bit USE_GF180_SRAM = 1'b0
 ) (
     input  logic                  clk_in,
     input  logic                  reset_int,    // active-high
@@ -37,7 +38,9 @@ module accelerator_top
     // SoC IRQ
     input  logic                  irq_en_4,
     input  logic [7:0]            ss_ctrl_4,
-    output logic                  irq_4
+    output logic                  irq_4,
+    inout  wire                   VDD,
+    inout  wire                   VSS
 );
 
     logic clk;
@@ -83,6 +86,7 @@ module accelerator_top
                                        // (clear_acc in the PE window), so this
                                        // top-level tap is intentionally unused.
     logic                array_done;
+    logic                array_done_raw;
 
     logic                mat_valid;
     logic                sys_ready;
@@ -155,6 +159,17 @@ module accelerator_top
     // -------------------------------------------------------------------------
     // matrix_buffer_ab
     // -------------------------------------------------------------------------
+    if (USE_GF180_SRAM) begin : g_sram_ab
+        matrix_buffer_ab_sram #(
+            .DATA_W(DATA_W), .M(M), .N(N), .K(K), .APB_AW(APB_AW), .APB_DW(APB_DW)
+        ) u_mat_ab (
+            .clk(clk), .rst_n(rst_n), .PADDR(PADDR), .PSEL(sel_ab), .PENABLE(PENABLE),
+            .PWRITE(PWRITE), .PWDATA(PWDATA), .PRDATA(prdata_ab), .PREADY(ready_ab),
+            .PSLVERR(err_ab), .mat_start(array_start), .mat_valid(mat_valid),
+            .sys_ready(sys_ready), .cfg_m_dim(cfg_m_dim), .cfg_n_dim(cfg_n_dim),
+            .cfg_k_dim(cfg_k_dim), .a_col(a_col), .b_row(b_row), .VDD(VDD), .VSS(VSS)
+        );
+    end else begin : g_register_ab
     matrix_buffer_ab #(
         .DATA_W(DATA_W),
         .M     (M),
@@ -182,6 +197,7 @@ module accelerator_top
         .a_col    (a_col),
         .b_row    (b_row)
     );
+    end
 
     // -------------------------------------------------------------------------
     // systolic_array
@@ -196,7 +212,7 @@ module accelerator_top
         .clk      (clk),
         .rst_n    (rst_n),
         .start    (array_start),
-        .done     (array_done),
+        .done     (array_done_raw),
         .cfg_m_dim(run_m_dim),
         .cfg_n_dim(run_n_dim),
         .cfg_k_dim(run_k_dim),
@@ -213,13 +229,32 @@ module accelerator_top
     // -------------------------------------------------------------------------
     // matrix_buffer_c
     // -------------------------------------------------------------------------
-    assign out_ready = 1'b1;  // capture buffer always ready in v1
-
     // array_clear is provided by control_unit for interface compatibility but
     // the array self-clears; tie it into an unused tap to keep lint clean.
     logic _unused_array_clear;
     assign _unused_array_clear = array_clear;
 
+    if (USE_GF180_SRAM) begin : g_sram_c
+        logic storage_busy;
+        logic done_pending;
+        always_ff @(posedge clk) begin
+            if (!rst_n) done_pending <= 1'b0;
+            else if (array_done_raw) done_pending <= 1'b1;
+            else if (!storage_busy) done_pending <= 1'b0;
+        end
+        assign array_done = done_pending && !storage_busy;
+        matrix_buffer_c_sram #(
+            .ACC_W(ACC_W), .M(M), .N(N), .APB_AW(APB_AW), .APB_DW(APB_DW)
+        ) u_mat_c (
+            .clk(clk), .rst_n(rst_n), .PADDR(PADDR), .PSEL(sel_c), .PENABLE(PENABLE),
+            .PWRITE(PWRITE), .PWDATA(PWDATA), .PRDATA(prdata_c), .PREADY(ready_c),
+            .PSLVERR(err_c), .c_in_valid(out_valid), .c_in_ready(out_ready), .busy(storage_busy),
+            .c_row_data_in(c_row_data), .c_row_in(c_row),
+            .cfg_m_dim(run_m_dim), .cfg_n_dim(run_n_dim), .VDD(VDD), .VSS(VSS)
+        );
+    end else begin : g_register_c
+    assign out_ready = 1'b1;
+    assign array_done = array_done_raw;
     matrix_buffer_c #(
         .ACC_W (ACC_W),
         .M     (M),
@@ -243,5 +278,6 @@ module accelerator_top
         .cfg_m_dim   (run_m_dim),
         .cfg_n_dim   (run_n_dim)
     );
+    end
 
 endmodule

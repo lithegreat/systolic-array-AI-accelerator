@@ -93,6 +93,12 @@ flowchart TB
 
 ## Parameters
 
+The optional `USE_GF180_SRAM=0` parameter selects the implementation described
+in [GF180 SRAM interface](gf180_sram_if.md). Setting it to one enables
+wait-state APB storage and output backpressure. `VDD`/`VSS` are explicit inout
+supply ports, unused by the default register-backed implementation. The
+`subsystem_12` wrapper forwards this parameter and those supplies.
+
 | Parameter | Default | Description |
 | --- | --- | --- |
 | `DATA_W` | `8` | Bit-width for Matrix A/B data elements (INT8 baseline; configurable to `8`/`16`/`32`). |
