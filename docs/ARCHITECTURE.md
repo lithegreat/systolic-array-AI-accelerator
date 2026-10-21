@@ -5,7 +5,7 @@
 > diving into any module; then follow the links into the
 > [interface contracts](interface/README.md) or the code.
 
-Last reviewed: 2026-07-08
+Last reviewed: 2026-10-22
 
 ## Bird's-eye view
 
@@ -58,7 +58,7 @@ development flow in [`AGENTS.md`](../AGENTS.md)):
 | 3. Golden / reference model | `sim/common/` (incl. `c_code/`) | Python / C GEMM model |
 | 4. Cocotb + Verilator tests | `sim/testbenches/`, `sim/scripts/` | functional regression |
 | 5. SoC integration | `Didactic-SoC/` submodule | firmware `sw/accel/`, full-SoC tb |
-| 6. Implementation | `fpga/`, `asic/` | PYNQ-Z1 bitstream, GF 22 nm FDX |
+| 6. Implementation | `fpga/`, `asic/` | PYNQ-Z1; legacy X-FAB backend; separate GF180 virtual-tapeout target |
 
 ## Codemap — where to find things
 
@@ -102,7 +102,7 @@ remain) · **WIP** · **Planned**.
 | SoC integration (Verilator) | Stable | Signed-off: `accel_result == 0xACCE5500`. |
 | SoC integration (QuestaSim) | Working | Lab-license-gated; `+initreg+0` fetch-X fix in place. Re-verified 2026-07 after upstream Didactic-SoC address-map update (see [verification report §9.4](verification/accelerator_soc_report.md)). |
 | FPGA (PYNQ-Z1) | Working | Full on-board bring-up report; eikon Vivado run currently blocked by disk quota, see [tech-debt TD-4](plans/tech-debt.md). |
-| ASIC (GF 22 nm FDX) | Planned | Gate-level netlist + timing. |
+| ASIC (GF180 virtual tapeout) | RTL / SRAM DB working; physical blocked | [Optional SRAM mode](../asic/gf180/README.md): six macros, 50 MHz system / 12.5 MHz memory, official-model regression passes 6 tiles / 558 signed results. Five SRAM DB corners compiled/read back; NDM needs the matching GF180 technology/precision. Full standard-cell/RC/signoff and physical closure remain unverified. |
 
 > Open gaps that need scheduling go to [plans/tech-debt.md](plans/tech-debt.md);
 > work in progress gets an [active plan](plans/README.md).

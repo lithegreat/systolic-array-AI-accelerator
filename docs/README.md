@@ -18,6 +18,7 @@ belongs in one of these files (not buried in a commit message or chat log).
 | Guides | [guides/](guides/) | How-to workflow docs (GitLab/MR workflow, lab-server examples). |
 | Reference | [reference/](reference/) | Platform and course reference material (Didactic SoC platform, course kick-off). |
 | Verification | [verification/](verification/) | Verification and bring-up reports; UVM testbench guide. |
+| GF180 virtual tapeout | [Flow and prerequisites](../asic/gf180/README.md) | Group 5 / subsystem_12; SRAM RTL tested and five DB corners compiled/read back; NDM technology setup and physical signoff still pending. |
 
 ## Directory layout
 
