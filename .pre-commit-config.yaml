@@ -26,3 +26,10 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: check-tapeout-sources
+        name: Keep generated tapeout data local and remotes on LRZ
+        entry: bash asic/gf180/scripts/check_sources.sh
+        language: system
+        pass_filenames: false
+        always_run: true

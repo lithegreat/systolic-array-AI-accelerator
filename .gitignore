@@ -58,6 +58,26 @@ transcript
 # Regenerate with: cd Didactic-SoC && tar czf ../ci/soc-deps.tar.gz .bender vendor_ips
 ci/soc-deps.tar.gz
 
+# Virtual tapeout data stays on Eikon; only flow sources belong in Git.
+asic/gf180/output/
+asic/gf180/local/
+asic/results/
+*.gds
+*.gds.*
+*.gdsii
+*.oas
+*.oasis
+*.spef
+*.spef.*
+*.sbpf
+*.dspf
+*.spf
+*.ndm/
+*.dlib/
+*.nlib/
+*.db
+asic/reports/*.ok
+
 # Backend EDA tool generated artifacts (Fusion Compiler / ICV / NDA compliance)
 *.dlib/
 *.dlib
@@ -76,5 +96,3 @@ signoff_*
 # Local reference and exercise files (never commit)
 lab5/
 *.pdf
-
-
