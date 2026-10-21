@@ -1,8 +1,9 @@
 # Ruff configuration for the Group5 accelerator repository.
-# The Didactic-SoC git submodule and the local `bin/` tools folder contain
+# The Didactic-SoC/SRAM submodules and the local `bin/` tools folder contain
 # third-party / vendored code and binaries that we do not own or lint.
 extend-exclude = [
     "Didactic-SoC",
+    "asic/gf180/vendor",
     "bin",
     ".venv",
 ]

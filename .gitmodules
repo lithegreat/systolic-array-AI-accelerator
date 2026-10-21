@@ -1,3 +1,7 @@
 [submodule "Didactic-SoC"]
 	path = Didactic-SoC
 	url = https://github.com/lithegreat/Didactic-SoC
+[submodule "gf180-sram"]
+	path = asic/gf180/vendor/sram
+	url = https://github.com/google/globalfoundries-pdk-ip-gf180mcu_fd_ip_sram.git
+	update = none

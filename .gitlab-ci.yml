@@ -10,6 +10,8 @@ default:
   interruptible: true
 
 variables:
+  # PDK source is initialized explicitly on Eikon, never by ordinary CI jobs.
+  GIT_SUBMODULE_STRATEGY: none
   # Prebuilt CI images live locally on the group5-runner host (the LRZ GitLab
   # instance has no Container Registry). They are built on the runner with:
   #   docker build -f ci/check.Dockerfile -t group5-ci-check:latest .
@@ -143,6 +145,7 @@ accel_soc_sim:
   timeout: 30m
   variables:
     GIT_SUBMODULE_STRATEGY: normal
+    GIT_SUBMODULE_PATHS: Didactic-SoC
     GIT_SUBMODULE_DEPTH: 1
     VERILATOR_JOBS: "1"
   rules:
@@ -182,6 +185,7 @@ benchmark_sim:
   timeout: 20m
   variables:
     GIT_SUBMODULE_STRATEGY: normal
+    GIT_SUBMODULE_PATHS: Didactic-SoC
     GIT_SUBMODULE_DEPTH: 1
     VERILATOR_JOBS: "1"
   rules:
