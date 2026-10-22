@@ -5,3 +5,7 @@
 	path = asic/gf180/vendor/sram
 	url = https://github.com/google/globalfoundries-pdk-ip-gf180mcu_fd_ip_sram.git
 	update = none
+[submodule "gf180-pdk"]
+	path = asic/gf180/vendor/pdk
+	url = https://github.com/google/gf180mcu-pdk.git
+	update = none

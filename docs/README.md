@@ -19,6 +19,7 @@ belongs in one of these files (not buried in a commit message or chat log).
 | Reference | [reference/](reference/) | Platform and course reference material (Didactic SoC platform, course kick-off). |
 | Verification | [verification/](verification/) | Verification and bring-up reports; UVM testbench guide. |
 | GF180 virtual tapeout | [Flow and prerequisites](../asic/gf180/README.md) | Group 5 / subsystem_12; SRAM RTL tested and five DB corners compiled/read back; NDM technology setup and physical signoff still pending. |
+| GF180 public sources | [Pinned PDK inventory](reference/gf180_pdk_inventory.md) | Verified timing/technology/rule sources, 1.8 V compatibility evidence and remaining tool-conversion work. |
 
 ## Directory layout
 

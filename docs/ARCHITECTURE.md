@@ -102,7 +102,7 @@ remain) · **WIP** · **Planned**.
 | SoC integration (Verilator) | Stable | Signed-off: `accel_result == 0xACCE5500`. |
 | SoC integration (QuestaSim) | Working | Lab-license-gated; `+initreg+0` fetch-X fix in place. Re-verified 2026-07 after upstream Didactic-SoC address-map update (see [verification report §9.4](verification/accelerator_soc_report.md)). |
 | FPGA (PYNQ-Z1) | Working | Full on-board bring-up report; eikon Vivado run currently blocked by disk quota, see [tech-debt TD-4](plans/tech-debt.md). |
-| ASIC (GF180 virtual tapeout) | RTL / SRAM DB working; physical blocked | [Optional SRAM mode](../asic/gf180/README.md): six macros, 50 MHz system / 12.5 MHz memory, official-model regression passes 6 tiles / 558 signed results. Five SRAM DB corners compiled/read back; NDM needs the matching GF180 technology/precision. Full standard-cell/RC/signoff and physical closure remain unverified. |
+| ASIC (GF180 virtual tapeout) | RTL / SRAM DB working; physical blocked | [Optional SRAM mode](../asic/gf180/README.md): six macros, 50 MHz system / 12.5 MHz memory, official-model regression passes 6 tiles / 558 signed results. [Pinned PDK audit](reference/gf180_pdk_inventory.md) confirms matching 1.8 V standard-cell sources and technology LEFs/public rule decks. Five SRAM DB corners compiled/read back; standard-cell DB assembly/readback scripts are offline-tested but not licensed-tool-qualified. Matching NDM technology/precision, qualified RC/signoff and physical closure remain unverified. |
 
 > Open gaps that need scheduling go to [plans/tech-debt.md](plans/tech-debt.md);
 > work in progress gets an [active plan](plans/README.md).
