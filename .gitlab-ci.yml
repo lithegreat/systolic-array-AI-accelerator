@@ -1,11 +1,13 @@
 stages:
   - check
   - sim
+  - backend
 
 # The group5-runner host is a small 2 vCPU / 1 GB Azure VM. Two heavy sim
 # containers (Verilator build + cocotb) running concurrently exhaust its RAM
-# and wedge the box, so every job is interruptible and the sim jobs are
-# serialized via a shared resource_group with a hard timeout.
+# and wedge the box, so local jobs are interruptible and the sim jobs are
+# serialized via a shared resource_group with a hard timeout. The backend
+# job dispatches to Eikon instead of running EDA tools on this VM.
 default:
   interruptible: true
 
@@ -25,6 +27,9 @@ variables:
   # checkouts / vendored IPs. Built on the runner with:
   #   docker build -f ci/soc.Dockerfile -t group5-ci-soc:latest .
   SOC_IMAGE: "group5-ci-soc:latest"
+  # SSH client only; licensed EDA tools and generated data stay on Eikon.
+  # docker build -f ci/backend.Dockerfile -t group5-ci-backend:latest .
+  BACKEND_IMAGE: "group5-ci-backend:latest"
 
 # ---------------------------------------------------------------------------
 # Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
@@ -210,3 +215,26 @@ benchmark_sim:
     paths:
       - Didactic-SoC/benchmark_metrics.txt
     expire_in: 4 weeks
+
+# ---------------------------------------------------------------------------
+# The Azure runner sends source to Eikon over SSH; it never receives EDA
+# outputs. Enable after provisioning the file variables and site configuration
+# documented in docs/guides/asic_backend_guide.md.
+# ---------------------------------------------------------------------------
+backend_gf180:
+  stage: backend
+  image: $BACKEND_IMAGE
+  resource_group: eikon-backend
+  interruptible: false
+  timeout: 4h
+  variables:
+    EIKON_HOST: "linux17.clients.eikon.tum.de"
+    EIKON_USER: "ge63nag"
+    EIKON_CI_ROOT: "/home/ge63nag/ci/group5"
+  rules:
+    - if: '$EIKON_CI_ENABLED == "1"'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    - bash ci/run_backend.sh
