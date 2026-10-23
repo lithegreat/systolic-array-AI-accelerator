@@ -34,7 +34,7 @@ docs/
 │   ├── completed/            # archived plans (kept for the decision log)
 │   └── tech-debt.md          # known technical debt register
 ├── guides/                   # how-to / workflow docs
-│   ├── asic_backend_guide.md # ASIC physical design workflow & Run 1 handover report
+│   ├── asic_backend_guide.md # ASIC flow how-to, signoff status, Run 2 plan
 │   ├── benchmark.md          # GEMM benchmark guide & analysis
 │   ├── io_bottleneck_solutions.md  # comparative analysis of I/O bottleneck fixes
 │   ├── gitlab_workflow.md
