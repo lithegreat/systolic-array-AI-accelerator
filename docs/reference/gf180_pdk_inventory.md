@@ -1,6 +1,15 @@
 # GF180 public PDK source inventory
 
-Last reviewed: 2026-10-22
+Last reviewed: 2026-10-23
+
+Execution update: the 7-track source was initialized on Eikon and its five
+Liberty corners compiled with LC. Independent DB readback passes for 228 cells
+per corner after explicitly excluding the unsupported `hold` bus keeper.
+The exclusion is fingerprinted and recorded; physical library qualification is
+not complete. The next actual LM technology conversion invocation was denied
+by execution authorization and was not bypassed.
+The original source audit below predates that run. See
+[current backend status](../../asic/gf180/README.md#consolidation-and-execution-on-2026-10-23).
 
 This is a source-level compatibility audit for the
 [GF180 backend](../../asic/gf180/README.md), not an implementation or signoff
