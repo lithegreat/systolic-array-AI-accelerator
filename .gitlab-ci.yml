@@ -216,6 +216,10 @@ benchmark_sim:
   resource_group: eikon-backend
   interruptible: false
   timeout: 2h
+  variables:
+    # Fast artifact zipping on the (small) runner host.
+    FF_USE_FASTZIP: "true"
+    ARTIFACT_COMPRESSION_LEVEL: fast
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes: &backend_paths

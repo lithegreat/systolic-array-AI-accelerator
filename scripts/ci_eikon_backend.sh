@@ -79,7 +79,7 @@ rsync -az --delete -e "$SSH" \
 rc=0
 # A stage only starts if the previous one left its .done marker (GitLab runs
 # `needs` dependents of a failed allow_failure job, e.g. the manual MR job).
-$SSH "$TARGET" "cd $REMOTE_DIR && bash -s -- $*" 2>&1 <<'REMOTE' |
+$SSH "$TARGET" "cd $REMOTE_DIR && touch .ci_stamp && bash -s -- $*" 2>&1 <<'REMOTE' |
 for s in "$@"; do
     if [ "$s" != check ] && [ "$s" != 01 ]; then
         prev=$(printf %02d $((10#$s - 1)))
@@ -93,7 +93,11 @@ REMOTE
         case $line in '>>'*|Error:*) echo "$line" ;; esac
     done || rc=${PIPESTATUS[0]}
 mkdir -p asic/reports
-rsync -az -e "$SSH" "$TARGET:$REMOTE_DIR/asic/reports/" asic/reports/ || true
+# Only pull what this job wrote: asic/reports/ on Eikon accumulates over the
+# pipeline, and each job uploads its own share as artifacts.
+rsync -az -e "$SSH" \
+    --files-from=<($SSH -n "$TARGET" "cd $REMOTE_DIR && find asic/reports -type f -newer .ci_stamp") \
+    "$TARGET:$REMOTE_DIR/" . || true
 [ "$rc" -eq 0 ] || exit "$rc"
 
 # fc_shell can exit 0 after a Tcl error; SEL-005 is documented as harmless.
