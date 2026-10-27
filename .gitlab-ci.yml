@@ -1,7 +1,11 @@
 stages:
   - check
   - sim
-  - backend
+  - backend_synth
+  - backend_floorplan
+  - backend_pnr
+  - backend_signoff
+  - backend_cleanup
 
 # The group5-runner host is a small 2 vCPU / 1 GB Azure VM. Two heavy sim
 # containers (Verilator build + cocotb) running concurrently exhaust its RAM
@@ -209,27 +213,28 @@ benchmark_sim:
     expire_in: 4 weeks
 
 # ---------------------------------------------------------------------------
-# Backend stage: ASIC physical flow (Fusion Compiler, ~1 h) on the TUM Eikon
-# lab machine. The Fusion Compiler licenses/modules only exist there, so this
-# job is just an SSH client: the group5-runner host (Azure VM) rsyncs the
-# checkout to linux17.clients.eikon.tum.de, runs asic/scripts/run_flow.sh over
-# SSH, and pulls asic/reports/ back as artifacts.
+# Backend stages: ASIC physical flow (Fusion Compiler, ~45 min) on the TUM
+# Eikon lab machine. The licenses/modules only exist there, so these jobs are
+# just SSH clients: the group5-runner host (Azure VM) rsyncs the checkout to
+# linux17.clients.eikon.tum.de and runs asic/scripts/run_flow.sh over SSH.
+# The jobs of one pipeline share /tmp/ge63nag_ci/<project>-<pipeline> on Eikon
+# (one Fusion Compiler library), so each stage can be retried on its own; a
+# failed pipeline leaves that directory for the retry. Each job returns
+# asic/reports/ as artifacts; asic_cleanup removes the remote directory.
 #
 # One-time setup (see docs/guides/asic_backend_guide.md, "CI on Eikon"):
 #   * the runner host holds a dedicated key in /home/li/.ssh/eikon_ci and the
 #     runners mount it read-only at /eikon-ssh (volumes in config.toml),
 #   * the public key is in ge63nag@linux17 ~/.ssh/authorized_keys.
-# Runs automatically on the default branch when ASIC/RTL files change and is
-# a manual job on merge requests (it occupies a shared lab machine and licenses).
+# Runs automatically on the default branch when ASIC/RTL files change. On merge
+# requests only asic_synth is manual (it occupies a shared lab machine and
+# licenses); the later jobs follow it through `needs`.
 # ---------------------------------------------------------------------------
-asic_backend:
-  stage: backend
+.asic_backend:
   image: alpine:3.19
   resource_group: eikon-backend
   interruptible: false
   timeout: 2h
-  variables:
-    GIT_STRATEGY: fetch
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes: &backend_paths
@@ -243,10 +248,50 @@ asic_backend:
       allow_failure: true
   before_script:
     - apk add --no-cache bash openssh-client rsync
-  script:
-    - bash scripts/ci_eikon_backend.sh all
   artifacts:
     when: always
     paths:
       - asic/reports/
     expire_in: 2 weeks
+
+asic_synth:
+  extends: .asic_backend
+  stage: backend_synth
+  script:
+    - bash scripts/ci_eikon_backend.sh 01
+
+asic_floorplan:
+  extends: .asic_backend
+  stage: backend_floorplan
+  needs: [asic_synth]
+  rules: &backend_follow_rules
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: *backend_paths
+  script:
+    - bash scripts/ci_eikon_backend.sh 02
+
+asic_pnr:
+  extends: .asic_backend
+  stage: backend_pnr
+  needs: [asic_floorplan]
+  rules: *backend_follow_rules
+  script:
+    - bash scripts/ci_eikon_backend.sh 03
+
+asic_signoff:
+  extends: .asic_backend
+  stage: backend_signoff
+  needs: [asic_pnr]
+  rules: *backend_follow_rules
+  script:
+    - bash scripts/ci_eikon_backend.sh 04 05 check
+
+asic_cleanup:
+  extends: .asic_backend
+  stage: backend_cleanup
+  needs: [asic_signoff]
+  rules: *backend_follow_rules
+  timeout: 5m
+  artifacts: {}
+  script:
+    - bash scripts/ci_eikon_backend.sh cleanup
