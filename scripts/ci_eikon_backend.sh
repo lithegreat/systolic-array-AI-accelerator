@@ -3,15 +3,63 @@
 # machine over SSH from the GitLab runner container, then pull asic/reports/.
 # Usage (repo root): bash scripts/ci_eikon_backend.sh STAGE...   (01..05, check)
 #                    bash scripts/ci_eikon_backend.sh cleanup
-# All jobs of one pipeline share the remote directory (and thus the Fusion
-# Compiler library), so the stages can be split over several CI jobs.
+# The job starting a pipeline (stage 01 / check) probes $EIKON_HOSTS and picks
+# the least loaded usable host; it is handed to the later jobs of the pipeline
+# through eikon.env (dotenv artifact), because they share a directory in that
+# host's /tmp (and thus the Fusion Compiler library).
 # The runner mounts the CI key + pinned known_hosts read-only at /eikon-ssh.
 set -euo pipefail
 
-TARGET="ge63nag@linux17.clients.eikon.tum.de"
-REMOTE_DIR="/tmp/ge63nag_ci/${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+EIKON_USER="ge63nag"
+EIKON_HOSTS="${EIKON_HOSTS:-linux17 linux16 linux15 linux14 linux13 linux11 linux10 lx01 lx02}"
+MIN_FREE_GB=8
+SIF=/nas/ei/share/tools/apptainer/MSMCD/alma8.6.sif
+
+cp /eikon-ssh/known_hosts /tmp/known_hosts   # pinned keys; unknown hosts are added on first use
 SSH="ssh -i /eikon-ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes
-     -o UserKnownHostsFile=/eikon-ssh/known_hosts -o ServerAliveInterval=30"
+     -o UserKnownHostsFile=/tmp/known_hosts -o StrictHostKeyChecking=accept-new
+     -o ServerAliveInterval=30"
+
+# Print "<load per core> <host>" for every reachable, authorized host that has the
+# lab tools and enough free memory; the table of all hosts goes to stderr.
+probe_hosts() {
+    local h
+    for h in $EIKON_HOSTS; do
+        (
+            r=$($SSH -o ConnectTimeout=6 -n "$EIKON_USER@$h.clients.eikon.tum.de" \
+                'read l _ < /proc/loadavg; m=$(awk "/MemAvailable/{print int(\$2/1048576)}" /proc/meminfo);
+                 echo $l $(nproc) $m $(test -f '"$SIF"' && echo 1 || echo 0)' 2>/dev/null) || r=unreachable
+            echo "$h $r" > "/tmp/probe_$h"
+        ) &
+    done
+    wait
+    for h in $EIKON_HOSTS; do
+        read -r _ load cores free tools < "/tmp/probe_$h" || true
+        echo "   $h: load=${load:-?} cores=${cores:-?} freeGB=${free:-?} tools=${tools:-?}" >&2
+        if [ "${tools:-0}" = 1 ] && [ "${free:-0}" -ge "$MIN_FREE_GB" ]; then
+            echo "$((10#${load/./} / cores)) $h"   # load per core, in percent
+        fi
+    done
+}
+
+case "$1" in
+    01|check)
+        echo ">> Probing Eikon hosts: $EIKON_HOSTS" >&2
+        EIKON_HOST=$(probe_hosts | sort -n | head -1 | cut -d' ' -f2)
+        [ -n "$EIKON_HOST" ] || { echo "ERROR: no usable Eikon host (is the CI key authorized there?)" >&2; exit 1; }
+        ;;
+    cleanup)
+        [ -n "${EIKON_HOST:-}" ] || exit 0   # nothing was started
+        ;;
+    *)
+        : "${EIKON_HOST:?no Eikon host recorded; run the first job of the pipeline}"
+        ;;
+esac
+echo "EIKON_HOST=$EIKON_HOST" > eikon.env
+echo ">> Eikon host: $EIKON_HOST"
+
+TARGET="$EIKON_USER@$EIKON_HOST.clients.eikon.tum.de"
+REMOTE_DIR="/tmp/${EIKON_USER}_ci/${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
 
 if [ "$1" = cleanup ]; then
     $SSH -n "$TARGET" "rm -rf $REMOTE_DIR"

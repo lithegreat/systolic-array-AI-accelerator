@@ -212,7 +212,8 @@ benchmark_sim:
 # Backend stages: ASIC physical flow (Fusion Compiler, ~45 min) on the TUM
 # Eikon lab machine. The licenses/modules only exist there, so these jobs are
 # just SSH clients: the group5-runner host (Azure VM) rsyncs the checkout to
-# linux17.clients.eikon.tum.de and runs asic/scripts/run_flow.sh over SSH.
+# an Eikon lab host (the least loaded usable one, picked by asic_synth) and runs
+# asic/scripts/run_flow.sh over SSH.
 # The jobs of one pipeline share /tmp/ge63nag_ci/<project>-<pipeline> on Eikon
 # (one Fusion Compiler library). They sit in one `backend` stage and run in
 # order through `needs`, so each can be retried on its own; a
@@ -222,7 +223,7 @@ benchmark_sim:
 # One-time setup (see docs/guides/asic_backend_guide.md, "CI on Eikon"):
 #   * the runner host holds a dedicated key in /home/li/.ssh/eikon_ci and the
 #     runners mount it read-only at /eikon-ssh (volumes in config.toml),
-#   * the public key is in ge63nag@linux17 ~/.ssh/authorized_keys.
+#   * the public key is in ge63nag@<host> ~/.ssh/authorized_keys on every pool host.
 # Runs automatically on the default branch when ASIC/RTL files change. On merge
 # requests only asic_synth is manual (it occupies a shared lab machine and
 # licenses); the later jobs follow it through `needs`.
@@ -249,6 +250,8 @@ benchmark_sim:
     when: always
     paths:
       - asic/reports/
+    reports:
+      dotenv: eikon.env   # EIKON_HOST: the host picked by the first job
     expire_in: 2 weeks
 
 asic_synth:
