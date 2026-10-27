@@ -73,13 +73,24 @@ rsync -az --delete -e "$SSH" \
     --include='/asic/***' --include='/rtl/***' --exclude='*' \
     ./ "$TARGET:$REMOTE_DIR/"
 
+# Synthesis size exploration: CI/CD (or "Run pipeline") variables ASIC_M, ASIC_N,
+# ASIC_K, ASIC_DATA_W, ASIC_ACC_W are forwarded to the flow (see 01_synth.tcl).
+PARAM_ENV=""
+for v in ASIC_M ASIC_N ASIC_K ASIC_DATA_W ASIC_ACC_W; do
+    val="${!v:-}"
+    [ -n "$val" ] || continue
+    case $val in *[!0-9]*) echo "ERROR: $v must be a positive integer, got '$val'" >&2; exit 1 ;; esac
+    PARAM_ENV="$PARAM_ENV export $v=$val &&"
+    echo ">> Parameter override: $v=$val"
+done
+
 # Pull the reports even when the flow fails, then fail on the flow's status.
 # fc_shell output is far above GitLab's 4 MB job-log limit (the log gets cut
 # off); keep only stage markers and errors here, full logs are in the artifacts.
 rc=0
 # A stage only starts if the previous one left its .done marker (GitLab runs
 # `needs` dependents of a failed allow_failure job, e.g. the manual MR job).
-$SSH "$TARGET" "cd $REMOTE_DIR && touch .ci_stamp && bash -s -- $*" 2>&1 <<'REMOTE' |
+$SSH "$TARGET" "cd $REMOTE_DIR && touch .ci_stamp &&$PARAM_ENV bash -s -- $*" 2>&1 <<'REMOTE' |
 for s in "$@"; do
     if [ "$s" != check ] && [ "$s" != 01 ]; then
         prev=$(printf %02d $((10#$s - 1)))
