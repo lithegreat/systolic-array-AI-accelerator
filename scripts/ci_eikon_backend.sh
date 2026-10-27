@@ -84,7 +84,8 @@ TARGET="$EIKON_USER@$EIKON_HOST.clients.eikon.tum.de"
 REMOTE_DIR="/tmp/${EIKON_USER}_ci/${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
 
 if [ "$1" = cleanup ]; then
-    $SSH -n "$TARGET" "rm -rf $REMOTE_DIR"
+    # also drop the link a synthesis cache restore left at the cached library's origin path
+    $SSH -n "$TARGET" "o=\$(cat $REMOTE_DIR/.cache_origin 2>/dev/null); if [ -n \"\$o\" ] && [ -L \"\$o\" ]; then rm -f \"\$o\"; rmdir -p --ignore-fail-on-non-empty \"\$(dirname \"\$o\")\" 2>/dev/null; fi; rm -rf $REMOTE_DIR"
     exit
 fi
 
@@ -125,16 +126,29 @@ for s in "$@"; do
     cache=""
     if [ "$s" = 01 ] && [ -n "${SYNTH_CACHE_HASH:-}" ]; then
         cache="$SYNTH_CACHE_DIR/$SYNTH_CACHE_HASH"
-        if [ -d "$cache/work" ]; then
-            # cp -r (no -p): restored reports get fresh mtimes and are uploaded as artifacts
-            mkdir -p asic/flow/work asic/reports
-            if cp -r "$cache/work/." asic/flow/work/ && cp -r "$cache/reports/." asic/reports/; then
-                touch "$cache" asic/flow/work/.done_01
-                echo ">> Synthesis cache hit ($SYNTH_CACHE_HASH): stage 01 skipped"
-                continue
+        mkdir -p asic/flow/work asic/reports
+        work=$(cd asic/flow/work && pwd -P)
+        # The design library records absolute paths below the work dir it was built in
+        # (CLIBs/...). Restoring into another pipeline's directory therefore needs that
+        # original path to point at the new work dir: link it, unless another live
+        # pipeline holds it (then run the synthesis).
+        origin=$(cat "$cache/origin" 2>/dev/null || true)
+        if [ -n "$origin" ] && [ -d "$cache/work" ]; then
+            if [ -L "$origin" ] && [ ! -e "$origin" ]; then rm -f "$origin"; fi
+            if [ "$origin" = "$work" ] || [ ! -e "$origin" ]; then
+                # cp -r (no -p): restored reports get fresh mtimes and are uploaded as artifacts
+                if { [ "$origin" = "$work" ] || { mkdir -p "$(dirname "$origin")" && ln -s "$work" "$origin"; }; } \
+                    && cp -r "$cache/work/." asic/flow/work/ && cp -r "$cache/reports/." asic/reports/; then
+                    [ "$origin" = "$work" ] || echo "$origin" > .cache_origin
+                    touch "$cache" asic/flow/work/.done_01
+                    echo ">> Synthesis cache hit ($SYNTH_CACHE_HASH): stage 01 skipped"
+                    continue
+                fi
+                echo ">> Synthesis cache restore failed, running stage 01"
+                rm -rf asic/flow/work/* asic/flow/work/.done_* asic/reports/*
+            else
+                echo ">> Synthesis cache entry is in use by another pipeline ($origin), running stage 01"
             fi
-            echo ">> Synthesis cache restore failed, running stage 01"
-            rm -rf asic/flow/work/* asic/flow/work/.done_* asic/reports/*
         fi
     fi
     bash asic/scripts/run_flow.sh "$s" || exit $?
@@ -146,6 +160,7 @@ for s in "$@"; do
             tmp="$cache.tmp$$"
             rm -rf "$tmp"
             mkdir -p "$tmp" && cp -r asic/flow/work "$tmp/work" && cp -r asic/reports "$tmp/reports" \
+                && (cd asic/flow/work && pwd -P) > "$tmp/origin" \
                 && rm -rf "$cache" && mv "$tmp" "$cache" \
                 && echo ">> Synthesis cached as $SYNTH_CACHE_HASH" \
                 || { echo ">> Synthesis caching failed"; rm -rf "$tmp"; }
