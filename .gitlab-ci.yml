@@ -24,6 +24,11 @@ variables:
   # checkouts / vendored IPs. Built on the runner with:
   #   docker build -f ci/soc.Dockerfile -t group5-ci-soc:latest .
   SOC_IMAGE: "group5-ci-soc:latest"
+  # Eikon backend jobs (ssh/rsync client). Plain alpine installs the tools on
+  # every run; after building the image on the runner with
+  #   docker build -f ci/eikon.Dockerfile -t group5-ci-eikon:latest .
+  # set this to group5-ci-eikon:latest (here or as a CI/CD variable).
+  EIKON_IMAGE: "alpine:3.19"
 
 # ---------------------------------------------------------------------------
 # Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
@@ -212,7 +217,7 @@ benchmark_sim:
 # licenses); the later jobs follow it through `needs`.
 # ---------------------------------------------------------------------------
 .asic_backend:
-  image: alpine:3.19
+  image: $EIKON_IMAGE
   resource_group: eikon-backend
   interruptible: false
   timeout: 2h
@@ -233,7 +238,8 @@ benchmark_sim:
       when: manual
       allow_failure: true
   before_script:
-    - apk add --no-cache bash openssh-client rsync
+    # No-op with the prebuilt EIKON_IMAGE; installs the tools on plain alpine.
+    - command -v rsync >/dev/null 2>&1 || apk add --no-cache bash openssh-client rsync
   artifacts:
     when: always
     paths:
