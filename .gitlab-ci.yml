@@ -241,9 +241,13 @@ benchmark_sim:
       dotenv: eikon.env   # EIKON_HOST: the host picked by the first job
     expire_in: 2 weeks
 
+# Starts as soon as the ~15 s check jobs pass instead of after the sim stage
+# (the checks keep a broken commit from occupying a lab host and licenses for
+# ~18 min); resource_group still serializes it with other pipelines' backend jobs.
 asic_synth:
   extends: .asic_backend
   stage: backend
+  needs: [check_conventions, check_python_format, check_gitkeep, check_docs]
   script:
     - bash scripts/ci_eikon_backend.sh 01
 
