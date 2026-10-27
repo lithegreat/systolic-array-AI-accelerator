@@ -35,17 +35,21 @@ else
     violation "missing $area_rpt"
 fi
 
-timing_rpt="$REPORTS/logic_opto_report_timing_setup.rpt"
-if [ -r "$timing_rpt" ]; then
-    wns=$(sed -n 's/^ *slack ([A-Z]*) *\(-\{0,1\}[0-9.]*\) *$/\1/p' "$timing_rpt" | sort -g | head -1)
-    echo ">> Timing gate: worst setup slack ${wns:-n/a} ns at ${CLOCK_MHZ} MHz"
+# Only the reg2reg path group ('clk') is gated: after logic synthesis the input/output
+# groups still contain unbuffered high-fanout nets (e.g. reset_n, hundreds of ns)
+# that placement/CTS repair.
+qor_rpt="$REPORTS/logic_opto_report_qor.rpt"
+if [ -r "$qor_rpt" ]; then
+    wns=$(sed -n "/Timing Path Group  'clk'/,/Worst Hold/p" "$qor_rpt" \
+        | sed -n 's/^Critical Path Slack: *//p' | sort -g | head -1)
+    echo ">> Timing gate: worst reg2reg setup slack ${wns:-n/a} ns at ${CLOCK_MHZ} MHz"
     if [ -z "$wns" ]; then
-        violation "no slack found in $timing_rpt"
+        violation "no reg2reg slack found in $qor_rpt"
     elif [ "${wns#-}" != "$wns" ]; then
-        violation "setup slack $wns ns < 0 after synthesis"
+        violation "reg2reg setup slack $wns ns < 0 after synthesis"
     fi
 else
-    violation "missing $timing_rpt"
+    violation "missing $qor_rpt"
 fi
 
 [ "$rc" -eq 0 ] || echo ">> Gates failed (ASIC_GATES=$MODE)" >&2
