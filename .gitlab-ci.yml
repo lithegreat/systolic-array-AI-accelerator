@@ -29,6 +29,12 @@ variables:
   #   docker build -f ci/eikon.Dockerfile -t group5-ci-eikon:latest .
   # set this to group5-ci-eikon:latest (here or as a CI/CD variable).
   EIKON_IMAGE: "alpine:3.19"
+  # Exploration branch: synthesize and implement an 8x8x8 array (see
+  # docs/guides/asic_backend_guide.md, "Size exploration"). Gates stay warn-only so
+  # the whole backend runs even if area/timing are over budget.
+  ASIC_M: "8"
+  ASIC_N: "8"
+  ASIC_K: "8"
 
 # ccache for the Verilator-based jobs: Verilator's generated makefiles use
 # $OBJCACHE, so unchanged generated C++ is not recompiled. The cache dir lives
