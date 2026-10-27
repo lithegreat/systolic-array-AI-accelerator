@@ -30,7 +30,10 @@ synth_hash() {
     {
         find rtl asic/common -type f ! -name goals.env | sort | xargs sha256sum
         sha256sum asic/flow/scripts/01_synth.tcl asic/flow/scripts/mcmm.tcl asic/scripts/run_flow.sh
-        for v in ASIC_M ASIC_N ASIC_K ASIC_DATA_W ASIC_ACC_W; do echo "$v=${!v:-}"; done
+        # effective design size: ASIC_* override, else ARRAY_* from goals.env
+        (. asic/common/goals.env
+         echo "M=${ASIC_M:-$ARRAY_M} N=${ASIC_N:-$ARRAY_N} K=${ASIC_K:-$ARRAY_K}"
+         echo "DATA_W=${ASIC_DATA_W:-} ACC_W=${ASIC_ACC_W:-}")
         echo "$SIF"
     } | sha256sum | cut -c1-16
 }
@@ -96,10 +99,11 @@ rsync -az --delete -e "$SSH" \
     --include='/asic/***' --include='/rtl/***' --exclude='*' \
     ./ "$TARGET:$REMOTE_DIR/"
 
-# Synthesis size exploration: CI/CD (or "Run pipeline") variables ASIC_M, ASIC_N,
-# ASIC_K, ASIC_DATA_W, ASIC_ACC_W are forwarded to the flow (see 01_synth.tcl).
+# Design size: CI/CD (or "Run pipeline") variables ASIC_M, ASIC_N, ASIC_K, ASIC_DATA_W,
+# ASIC_ACC_W (override goals.env ARRAY_*) and ASIC_CORE_SIDE_UM are forwarded to the flow
+# (see 01_synth.tcl, 02_floorplan.tcl).
 PARAM_ENV=""
-for v in ASIC_M ASIC_N ASIC_K ASIC_DATA_W ASIC_ACC_W; do
+for v in ASIC_M ASIC_N ASIC_K ASIC_DATA_W ASIC_ACC_W ASIC_CORE_SIDE_UM; do
     val="${!v:-}"
     [ -n "$val" ] || continue
     case $val in *[!0-9]*) echo "ERROR: $v must be a positive integer, got '$val'" >&2; exit 1 ;; esac
