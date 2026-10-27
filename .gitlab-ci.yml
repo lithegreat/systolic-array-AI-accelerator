@@ -226,6 +226,7 @@ benchmark_sim:
         - asic/**/*
         - rtl/**/*
         - scripts/ci_eikon_backend.sh
+        - scripts/ci_synth_gates.sh
         - .gitlab-ci.yml
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes: *backend_paths
@@ -250,6 +251,9 @@ asic_synth:
   needs: [check_conventions, check_python_format, check_gitkeep, check_docs]
   script:
     - bash scripts/ci_eikon_backend.sh 01
+    # Area / setup-timing gates on the synthesis reports; ASIC_GATES=fail (CI/CD
+    # variable) makes them stop the pipeline before placement and routing.
+    - bash scripts/ci_synth_gates.sh
 
 asic_floorplan:
   extends: .asic_backend
