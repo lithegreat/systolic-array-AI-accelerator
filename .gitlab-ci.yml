@@ -1,11 +1,7 @@
 stages:
   - check
   - sim
-  - backend_synth
-  - backend_floorplan
-  - backend_pnr
-  - backend_signoff
-  - backend_cleanup
+  - backend
 
 # The group5-runner host is a small 2 vCPU / 1 GB Azure VM. Two heavy sim
 # containers (Verilator build + cocotb) running concurrently exhaust its RAM
@@ -218,7 +214,8 @@ benchmark_sim:
 # just SSH clients: the group5-runner host (Azure VM) rsyncs the checkout to
 # linux17.clients.eikon.tum.de and runs asic/scripts/run_flow.sh over SSH.
 # The jobs of one pipeline share /tmp/ge63nag_ci/<project>-<pipeline> on Eikon
-# (one Fusion Compiler library), so each stage can be retried on its own; a
+# (one Fusion Compiler library). They sit in one `backend` stage and run in
+# order through `needs`, so each can be retried on its own; a
 # failed pipeline leaves that directory for the retry. Each job returns
 # asic/reports/ as artifacts; asic_cleanup removes the remote directory.
 #
@@ -256,13 +253,13 @@ benchmark_sim:
 
 asic_synth:
   extends: .asic_backend
-  stage: backend_synth
+  stage: backend
   script:
     - bash scripts/ci_eikon_backend.sh 01
 
 asic_floorplan:
   extends: .asic_backend
-  stage: backend_floorplan
+  stage: backend
   needs: [asic_synth]
   rules: &backend_follow_rules
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -272,7 +269,7 @@ asic_floorplan:
 
 asic_pnr:
   extends: .asic_backend
-  stage: backend_pnr
+  stage: backend
   needs: [asic_floorplan]
   rules: *backend_follow_rules
   script:
@@ -280,7 +277,7 @@ asic_pnr:
 
 asic_signoff:
   extends: .asic_backend
-  stage: backend_signoff
+  stage: backend
   needs: [asic_pnr]
   rules: *backend_follow_rules
   script:
@@ -288,7 +285,7 @@ asic_signoff:
 
 asic_cleanup:
   extends: .asic_backend
-  stage: backend_cleanup
+  stage: backend
   needs: [asic_signoff]
   rules: *backend_follow_rules
   timeout: 5m
