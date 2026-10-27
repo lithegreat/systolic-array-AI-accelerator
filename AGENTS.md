@@ -25,6 +25,7 @@ patches.
 | A module's ports / protocol (**source of truth**) | [docs/interface/](docs/interface/README.md) |
 | Plans, decision logs, tech debt | [docs/plans/](docs/plans/README.md) |
 | Build / run / lab procedures | [docs/guides/](docs/guides/) |
+| NDA-safe generated-file handling and sharing | [docs/guides/nda_file_handling.md](docs/guides/nda_file_handling.md) |
 | UVM testbench for `accelerator_top` | [docs/verification/accel_uvm_tb.md](docs/verification/accel_uvm_tb.md) |
 | Setup, milestones, team ownership | [README.md](README.md) |
 
@@ -85,6 +86,7 @@ skill at `.agents/skills/glab-ci/SKILL.md`.
 ## Guardrails
 
 - Take local, reversible actions (edit, sim, lint) freely.
+- **NDA/file handling**: follow [docs/guides/nda_file_handling.md](docs/guides/nda_file_handling.md) before generating, storing, staging, or sharing files. If uncertain, stop and ask.
 - **Confirm before** destructive or shared-infra actions: deleting files/
   branches, `git push --force`, history rewrites, dropping data. Never bypass
   safety checks (e.g. `--no-verify`).
