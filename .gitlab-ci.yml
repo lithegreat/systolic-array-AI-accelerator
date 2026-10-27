@@ -278,7 +278,12 @@ benchmark_sim:
 asic_synth:
   extends: .asic_backend
   stage: backend
-  needs: [check_conventions, check_python_format, check_gitkeep, check_docs]
+  # optional: merge request pipelines contain only the rules-gated jobs, not these.
+  needs:
+    - {job: check_conventions, optional: true}
+    - {job: check_python_format, optional: true}
+    - {job: check_gitkeep, optional: true}
+    - {job: check_docs, optional: true}
   script:
     - bash scripts/ci_eikon_backend.sh 01
     # Area / setup-timing gates on the synthesis reports; ASIC_GATES=fail (CI/CD
