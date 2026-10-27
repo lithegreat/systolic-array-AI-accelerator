@@ -29,7 +29,18 @@ rsync -az --delete -e "$SSH" \
 # fc_shell output is far above GitLab's 4 MB job-log limit (the log gets cut
 # off); keep only stage markers and errors here, full logs are in the artifacts.
 rc=0
-$SSH -n "$TARGET" "cd $REMOTE_DIR && for s in $*; do bash asic/scripts/run_flow.sh \$s || exit \$?; done" 2>&1 |
+# A stage only starts if the previous one left its .done marker (GitLab runs
+# `needs` dependents of a failed allow_failure job, e.g. the manual MR job).
+$SSH "$TARGET" "cd $REMOTE_DIR && bash -s -- $*" 2>&1 <<'REMOTE' |
+for s in "$@"; do
+    if [ "$s" != check ] && [ "$s" != 01 ]; then
+        prev=$(printf %02d $((10#$s - 1)))
+        [ -e asic/flow/work/.done_$prev ] || { echo ">> Error: stage $prev has not completed"; exit 1; }
+    fi
+    bash asic/scripts/run_flow.sh "$s" || exit $?
+    touch asic/flow/work/.done_$s
+done
+REMOTE
     while IFS= read -r line; do
         case $line in '>>'*|Error:*) echo "$line" ;; esac
     done || rc=${PIPESTATUS[0]}
