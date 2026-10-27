@@ -20,6 +20,25 @@ SSH="ssh -i /eikon-ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes
      -o UserKnownHostsFile=/tmp/known_hosts -o StrictHostKeyChecking=accept-new
      -o ServerAliveInterval=30"
 
+# Synthesis cache (see docs/guides/asic_backend_guide.md): the stage 01 result
+# (design library + reports) is kept on the Eikon host, keyed by a hash of
+# everything stage 01 depends on, so an unchanged RTL skips the ~18 min synthesis.
+CACHE_DIR="${ASIC_SYNTH_CACHE_DIR:-/tmp/${EIKON_USER}_ci/synth_cache}"
+SYNTH_CACHE="${ASIC_SYNTH_CACHE:-$(. asic/common/goals.env && echo "$SYNTH_CACHE")}"
+SYNTH_HASH=""
+synth_hash() {
+    {
+        find rtl asic/common -type f ! -name goals.env | sort | xargs sha256sum
+        sha256sum asic/flow/scripts/01_synth.tcl asic/flow/scripts/mcmm.tcl asic/scripts/run_flow.sh
+        for v in ASIC_M ASIC_N ASIC_K ASIC_DATA_W ASIC_ACC_W; do echo "$v=${!v:-}"; done
+        echo "$SIF"
+    } | sha256sum | cut -c1-16
+}
+case " $* " in
+    *" 01 "*) if [ "$SYNTH_CACHE" = 1 ]; then SYNTH_HASH=$(synth_hash); fi ;;
+esac
+[ -z "$SYNTH_HASH" ] || echo ">> Synthesis cache key: $SYNTH_HASH" >&2
+
 # Print "<load per core> <host>" for every reachable, authorized host that has the
 # lab tools and enough free memory; the table of all hosts goes to stderr.
 probe_hosts() {
@@ -28,16 +47,19 @@ probe_hosts() {
         (
             r=$($SSH -o ConnectTimeout=6 -n "$EIKON_USER@$h.clients.eikon.tum.de" \
                 'read l _ < /proc/loadavg; m=$(awk "/MemAvailable/{print int(\$2/1048576)}" /proc/meminfo);
-                 echo $l $(nproc) $m $(test -f '"$SIF"' && echo 1 || echo 0)' 2>/dev/null) || r=unreachable
+                 t=$(test -f '"$SIF"' && echo 1 || echo 0);
+                 c=$(test -n "'"$SYNTH_HASH"'" && test -d '"$CACHE_DIR/$SYNTH_HASH"'/work && echo 1 || echo 0);
+                 echo $l $(nproc) $m $t $c' 2>/dev/null) || r=unreachable
             echo "$h $r" > "/tmp/probe_$h"
         ) &
     done
     wait
     for h in $EIKON_HOSTS; do
-        read -r _ load cores free tools < "/tmp/probe_$h" || true
-        echo "   $h: load=${load:-?} cores=${cores:-?} freeGB=${free:-?} tools=${tools:-?}" >&2
+        read -r _ load cores free tools cached < "/tmp/probe_$h" || true
+        echo "   $h: load=${load:-?} cores=${cores:-?} freeGB=${free:-?} tools=${tools:-?} synth_cache=${cached:-?}" >&2
         if [ "${tools:-0}" = 1 ] && [ "${free:-0}" -ge "$MIN_FREE_GB" ]; then
-            echo "$((10#${load/./} / cores)) $h"   # load per core, in percent
+            # a host holding the cached synthesis result wins over any load difference
+            echo "$((10#${load/./} / cores - ${cached:-0} * 100000)) $h"   # load per core, in percent
         fi
     done
 }
@@ -84,6 +106,10 @@ for v in ASIC_M ASIC_N ASIC_K ASIC_DATA_W ASIC_ACC_W; do
     echo ">> Parameter override: $v=$val"
 done
 
+if [ -n "$SYNTH_HASH" ]; then
+    PARAM_ENV="$PARAM_ENV export SYNTH_CACHE_HASH=$SYNTH_HASH && export SYNTH_CACHE_DIR=$CACHE_DIR &&"
+fi
+
 # Pull the reports even when the flow fails, then fail on the flow's status.
 # fc_shell output is far above GitLab's 4 MB job-log limit (the log gets cut
 # off); keep only stage markers and errors here, full logs are in the artifacts.
@@ -96,8 +122,37 @@ for s in "$@"; do
         prev=$(printf %02d $((10#$s - 1)))
         [ -e asic/flow/work/.done_$prev ] || { echo ">> Error: stage $prev has not completed"; exit 1; }
     fi
+    cache=""
+    if [ "$s" = 01 ] && [ -n "${SYNTH_CACHE_HASH:-}" ]; then
+        cache="$SYNTH_CACHE_DIR/$SYNTH_CACHE_HASH"
+        if [ -d "$cache/work" ]; then
+            # cp -r (no -p): restored reports get fresh mtimes and are uploaded as artifacts
+            mkdir -p asic/flow/work asic/reports
+            if cp -r "$cache/work/." asic/flow/work/ && cp -r "$cache/reports/." asic/reports/; then
+                touch "$cache" asic/flow/work/.done_01
+                echo ">> Synthesis cache hit ($SYNTH_CACHE_HASH): stage 01 skipped"
+                continue
+            fi
+            echo ">> Synthesis cache restore failed, running stage 01"
+            rm -rf asic/flow/work/* asic/flow/work/.done_* asic/reports/*
+        fi
+    fi
     bash asic/scripts/run_flow.sh "$s" || exit $?
     touch asic/flow/work/.done_$s
+    if [ -n "$cache" ]; then
+        if grep -E '^Error:' asic/reports/01_synth.log | grep -qv 'SEL-005'; then
+            echo ">> Synthesis not cached (errors in the log)"
+        else
+            tmp="$cache.tmp$$"
+            rm -rf "$tmp"
+            mkdir -p "$tmp" && cp -r asic/flow/work "$tmp/work" && cp -r asic/reports "$tmp/reports" \
+                && rm -rf "$cache" && mv "$tmp" "$cache" \
+                && echo ">> Synthesis cached as $SYNTH_CACHE_HASH" \
+                || { echo ">> Synthesis caching failed"; rm -rf "$tmp"; }
+            # keep the three most recently used entries
+            ls -1dt "$SYNTH_CACHE_DIR"/*/ 2>/dev/null | tail -n +4 | xargs -r rm -rf
+        fi
+    fi
 done
 REMOTE
     while IFS= read -r line; do
