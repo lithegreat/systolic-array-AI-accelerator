@@ -150,11 +150,12 @@ import pyuvm
 from accel_uvm.base_test import AccelBaseTest
 from accel_uvm.sequences import AccelLoadABSeq, AccelComputeSeq, AccelReadCSeq
 
+
 @pyuvm.test()
 class MyNewTest(AccelBaseTest):
     async def run_phase(self):
         self.raise_objection()
-        await super().run_phase()          # starts clock and reset
+        await super().run_phase()  # starts clock and reset
 
         seqr = self.env.apb_agent.sequencer
 
