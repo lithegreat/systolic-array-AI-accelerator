@@ -18,8 +18,13 @@ rsync -az --delete -e "$SSH" --include='/asic/***' --include='/rtl/***' --exclud
     ./ "$TARGET:$REMOTE_DIR/"
 
 # Pull the reports even when the flow fails, then fail on the flow's status.
+# fc_shell output is far above GitLab's 4 MB job-log limit (the log gets cut
+# off); keep only stage markers and errors here, full logs are in the artifacts.
 rc=0
-$SSH -n "$TARGET" "cd $REMOTE_DIR && bash asic/scripts/run_flow.sh $STAGE" || rc=$?
+$SSH -n "$TARGET" "cd $REMOTE_DIR && bash asic/scripts/run_flow.sh $STAGE" 2>&1 |
+    while IFS= read -r line; do
+        case $line in '>>'*|Error:*) echo "$line" ;; esac
+    done || rc=${PIPESTATUS[0]}
 mkdir -p asic/reports
 rsync -az -e "$SSH" "$TARGET:$REMOTE_DIR/asic/reports/" asic/reports/ || true
 [ "$rc" -eq 0 ] || exit "$rc"
