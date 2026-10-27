@@ -4,6 +4,7 @@
 FROM verilator/verilator:latest
 
 # System build dependencies needed by cocotb, the standalone Verilator flow, and formal verification.
+# ccache lets the Verilator jobs reuse compiled objects across pipelines (see .ccache in .gitlab-ci.yml).
 # NOTE: z3 is intentionally NOT installed here via apt. The distro z3 package
 # in this base image hung/blew up memory on control_unit_formal's SMT2 model
 # under the runner's tight 892MB RAM (job died mid-solve: "Unexpected EOF
@@ -15,7 +16,7 @@ FROM verilator/verilator:latest
 # PATH.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-dev make g++ bash \
+        python3 python3-pip python3-dev make g++ bash ccache \
         yosys git \
     && rm -rf /var/lib/apt/lists/*
 

@@ -30,6 +30,25 @@ variables:
   # set this to group5-ci-eikon:latest (here or as a CI/CD variable).
   EIKON_IMAGE: "alpine:3.19"
 
+# ccache for the Verilator-based jobs: Verilator's generated makefiles use
+# $OBJCACHE, so unchanged generated C++ is not recompiled. The cache dir lives
+# in the project dir (GitLab cache paths must) and is kept per job on the runner.
+# ccache is baked into SIM_IMAGE (ci/sim.Dockerfile); jobs print `ccache -s`.
+.ccache:
+  variables:
+    CCACHE_DIR: "$CI_PROJECT_DIR/.ccache"
+    CCACHE_BASEDIR: "$CI_PROJECT_DIR"
+    CCACHE_MAXSIZE: "500M"
+  cache:
+    key: ccache-$CI_JOB_NAME
+    paths:
+      - .ccache/
+  before_script:
+    # Only enable it when the image has ccache (an old image falls back to a plain build).
+    - if command -v ccache >/dev/null 2>&1; then export OBJCACHE=ccache; else echo "ccache not installed, building without"; fi
+  after_script:
+    - ccache -s || true
+
 # ---------------------------------------------------------------------------
 # Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
 # ---------------------------------------------------------------------------
@@ -61,6 +80,7 @@ check_docs:
 # Sim stage: Verilator + Python sim deps are baked into SIM_IMAGE.
 # ---------------------------------------------------------------------------
 cocotb_sim:
+  extends: .ccache
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
@@ -69,6 +89,7 @@ cocotb_sim:
     - pytest -vv sim/test_runner.py
 
 accel_verilator_sim:
+  extends: .ccache
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
@@ -93,6 +114,7 @@ formal:
 # compute, drains C, compares against a Python golden model.  Runs on the
 # same SIM_IMAGE (which includes pyuvm via requirements/sim.txt).
 accel_uvm_sim:
+  extends: .ccache
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
@@ -126,6 +148,7 @@ accel_uvm_sim:
 # bender/vendored dependencies are prebaked into SOC_IMAGE at /opt/soc-deps.
 # ---------------------------------------------------------------------------
 accel_soc_sim:
+  extends: .ccache
   stage: sim
   image: $SOC_IMAGE
   resource_group: sim-runner
@@ -165,6 +188,7 @@ accel_soc_sim:
 # Same trigger paths and infrastructure requirements as accel_soc_sim.
 # ---------------------------------------------------------------------------
 benchmark_sim:
+  extends: .ccache
   stage: sim
   image: $SOC_IMAGE
   resource_group: sim-runner
