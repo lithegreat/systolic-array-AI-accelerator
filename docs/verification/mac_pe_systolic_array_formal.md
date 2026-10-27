@@ -73,23 +73,10 @@ DONE (PASS, rc=0)  -- systolic_array_cover.sby (3 cover traces found at step 1)
 
 ## 5. CI integration
 
-```yaml
-mac_pe_formal:
-  stage: sim
-  image: $SIM_IMAGE
-  resource_group: sim-runner
-  timeout: 5m
-  script:
-    - cd formal/mac_pe && sby -f mac_pe.sby && sby -f mac_pe_cover.sby
-
-systolic_array_formal:
-  stage: sim
-  image: $SIM_IMAGE
-  resource_group: sim-runner
-  timeout: 10m
-  script:
-    - cd formal/systolic_array && sby -f systolic_array.sby && sby -f systolic_array_cover.sby
-```
+The three formal proofs (`control_unit`, `mac_pe`, `systolic_array`) run in one
+`formal` job in [.gitlab-ci.yml](../../.gitlab-ci.yml): each proof directory is
+run with `sby -f <name>.sby && sby -f <name>_cover.sby`. They take ~20 s in
+total, so one job avoids three serialized container startups on the runner.
 
 ## 6. File tree
 

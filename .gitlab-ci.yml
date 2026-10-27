@@ -1,6 +1,7 @@
 stages:
   - check
   - sim
+  - backend
 
 # The group5-runner host is a small 2 vCPU / 1 GB Azure VM. Two heavy sim
 # containers (Verilator build + cocotb) running concurrently exhaust its RAM
@@ -23,6 +24,30 @@ variables:
   # checkouts / vendored IPs. Built on the runner with:
   #   docker build -f ci/soc.Dockerfile -t group5-ci-soc:latest .
   SOC_IMAGE: "group5-ci-soc:latest"
+  # Eikon backend jobs (ssh/rsync client). Plain alpine installs the tools on
+  # every run; after building the image on the runner with
+  #   docker build -f ci/eikon.Dockerfile -t group5-ci-eikon:latest .
+  # set this to group5-ci-eikon:latest (here or as a CI/CD variable).
+  EIKON_IMAGE: "alpine:3.19"
+
+# ccache for the Verilator-based jobs: Verilator's generated makefiles use
+# $OBJCACHE, so unchanged generated C++ is not recompiled. The cache dir lives
+# in the project dir (GitLab cache paths must) and is kept per job on the runner.
+# ccache is baked into SIM_IMAGE (ci/sim.Dockerfile); jobs print `ccache -s`.
+.ccache:
+  variables:
+    CCACHE_DIR: "$CI_PROJECT_DIR/.ccache"
+    CCACHE_BASEDIR: "$CI_PROJECT_DIR"
+    CCACHE_MAXSIZE: "500M"
+  cache:
+    key: ccache-$CI_JOB_NAME
+    paths:
+      - .ccache/
+  before_script:
+    # Only enable it when the image has ccache (an old image falls back to a plain build).
+    - if command -v ccache >/dev/null 2>&1; then export OBJCACHE=ccache; else echo "ccache not installed, building without"; fi
+  after_script:
+    - ccache -s || true
 
 # ---------------------------------------------------------------------------
 # Check stage: tooling (ruff, pre_commit) is baked into CHECK_IMAGE.
@@ -55,6 +80,7 @@ check_docs:
 # Sim stage: Verilator + Python sim deps are baked into SIM_IMAGE.
 # ---------------------------------------------------------------------------
 cocotb_sim:
+  extends: .ccache
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
@@ -63,6 +89,7 @@ cocotb_sim:
     - pytest -vv sim/test_runner.py
 
 accel_verilator_sim:
+  extends: .ccache
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
@@ -70,40 +97,24 @@ accel_verilator_sim:
   script:
     - ./sim/scripts/run_verilator.sh
 
-control_unit_formal:
+# One job for all three formal proofs: they take ~20 s in total, so a job each
+# only paid for three serialized container startups on the small runner.
+formal:
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
-  timeout: 5m
+  timeout: 15m
   script:
-    - cd formal/control_unit
-    - sby -f control_unit.sby
-    - sby -f control_unit_cover.sby
-
-mac_pe_formal:
-  stage: sim
-  image: $SIM_IMAGE
-  resource_group: sim-runner
-  timeout: 5m
-  script:
-    - cd formal/mac_pe
-    - sby -f mac_pe.sby
-    - sby -f mac_pe_cover.sby
-
-systolic_array_formal:
-  stage: sim
-  image: $SIM_IMAGE
-  resource_group: sim-runner
-  timeout: 10m
-  script:
-    - cd formal/systolic_array
-    - sby -f systolic_array.sby
-    - sby -f systolic_array_cover.sby
+    - |
+      for d in control_unit mac_pe systolic_array; do
+        (cd formal/$d && sby -f $d.sby && sby -f ${d}_cover.sby)
+      done
 
 # pyuvm end-to-end test for accelerator_top: loads matrices A/B, triggers
 # compute, drains C, compares against a Python golden model.  Runs on the
 # same SIM_IMAGE (which includes pyuvm via requirements/sim.txt).
 accel_uvm_sim:
+  extends: .ccache
   stage: sim
   image: $SIM_IMAGE
   resource_group: sim-runner
@@ -137,6 +148,7 @@ accel_uvm_sim:
 # bender/vendored dependencies are prebaked into SOC_IMAGE at /opt/soc-deps.
 # ---------------------------------------------------------------------------
 accel_soc_sim:
+  extends: .ccache
   stage: sim
   image: $SOC_IMAGE
   resource_group: sim-runner
@@ -176,6 +188,7 @@ accel_soc_sim:
 # Same trigger paths and infrastructure requirements as accel_soc_sim.
 # ---------------------------------------------------------------------------
 benchmark_sim:
+  extends: .ccache
   stage: sim
   image: $SOC_IMAGE
   resource_group: sim-runner
@@ -206,3 +219,114 @@ benchmark_sim:
     paths:
       - Didactic-SoC/benchmark_metrics.txt
     expire_in: 4 weeks
+
+# ---------------------------------------------------------------------------
+# Backend stages: ASIC physical flow (Fusion Compiler, ~45 min) on the TUM
+# Eikon lab machine. The licenses/modules only exist there, so these jobs are
+# just SSH clients: the group5-runner host (Azure VM) rsyncs the checkout to
+# an Eikon lab host (the least loaded usable one, picked by asic_synth) and runs
+# asic/scripts/run_flow.sh over SSH.
+# The jobs of one pipeline share /tmp/ge63nag_ci/<project>-<pipeline> on Eikon
+# (one Fusion Compiler library). They sit in one `backend` stage and run in
+# order through `needs`, so each can be retried on its own; a
+# failed pipeline leaves that directory for the retry. Each job returns
+# asic/reports/ as artifacts; asic_cleanup removes the remote directory.
+#
+# One-time setup (see docs/guides/asic_backend_guide.md, "CI on Eikon"):
+#   * the runner host holds a dedicated key in /home/li/.ssh/eikon_ci and the
+#     runners mount it read-only at /eikon-ssh (volumes in config.toml),
+#   * the public key is in ge63nag@<host> ~/.ssh/authorized_keys on every pool host.
+# Runs automatically on the default branch when ASIC/RTL files change. On merge
+# requests only asic_synth is manual (it occupies a shared lab machine and
+# licenses); the later jobs follow it through `needs`.
+# ---------------------------------------------------------------------------
+.asic_backend:
+  image: $EIKON_IMAGE
+  resource_group: eikon-backend
+  interruptible: false
+  timeout: 2h
+  variables:
+    # Fast artifact zipping on the (small) runner host.
+    FF_USE_FASTZIP: "true"
+    ARTIFACT_COMPRESSION_LEVEL: fast
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: &backend_paths
+        - asic/**/*
+        - rtl/**/*
+        - scripts/ci_eikon_backend.sh
+        - scripts/ci_synth_gates.sh
+        - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: *backend_paths
+      when: manual
+      allow_failure: true
+    # explore-* branches (no MR needed): manual backend, e.g. to try smaller array sizes.
+    - if: '$CI_COMMIT_BRANCH =~ /^explore-/'
+      when: manual
+      allow_failure: true
+  before_script:
+    # No-op with the prebuilt EIKON_IMAGE; installs the tools on plain alpine.
+    - command -v rsync >/dev/null 2>&1 || apk add --no-cache bash openssh-client rsync
+  artifacts:
+    when: always
+    paths:
+      - asic/reports/
+    reports:
+      dotenv: eikon.env   # EIKON_HOST: the host picked by the first job
+    expire_in: 2 weeks
+
+# Starts as soon as the ~15 s check jobs pass instead of after the sim stage
+# (the checks keep a broken commit from occupying a lab host and licenses for
+# ~18 min); resource_group still serializes it with other pipelines' backend jobs.
+asic_synth:
+  extends: .asic_backend
+  stage: backend
+  # optional: merge request pipelines contain only the rules-gated jobs, not these.
+  needs:
+    - {job: check_conventions, optional: true}
+    - {job: check_python_format, optional: true}
+    - {job: check_gitkeep, optional: true}
+    - {job: check_docs, optional: true}
+  script:
+    - bash scripts/ci_eikon_backend.sh 01
+    # Area / setup-timing gates on the synthesis reports; ASIC_GATES=fail (CI/CD
+    # variable) makes them stop the pipeline before placement and routing.
+    - bash scripts/ci_synth_gates.sh
+
+asic_floorplan:
+  extends: .asic_backend
+  stage: backend
+  needs: [asic_synth]
+  rules: &backend_follow_rules
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: *backend_paths
+    - if: '$CI_COMMIT_BRANCH =~ /^explore-/'
+  script:
+    - bash scripts/ci_eikon_backend.sh 02
+
+asic_pnr:
+  extends: .asic_backend
+  stage: backend
+  needs: [asic_floorplan]
+  rules: *backend_follow_rules
+  script:
+    - bash scripts/ci_eikon_backend.sh 03
+
+asic_signoff:
+  extends: .asic_backend
+  stage: backend
+  needs: [asic_pnr]
+  rules: *backend_follow_rules
+  script:
+    - bash scripts/ci_eikon_backend.sh 04 05 check
+
+asic_cleanup:
+  extends: .asic_backend
+  stage: backend
+  needs: [asic_signoff]
+  rules: *backend_follow_rules
+  timeout: 5m
+  artifacts: {}
+  script:
+    - bash scripts/ci_eikon_backend.sh cleanup

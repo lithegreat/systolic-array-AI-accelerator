@@ -15,7 +15,7 @@ belongs in one of these files (not buried in a commit message or chat log).
 | Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) | Top-level domain/layer map, per-area maturity scorecard, and tracked gaps. **Start here** to understand the system. |
 | Interfaces | [interface/README.md](interface/README.md) | Module interface contracts (ports, widths, reset, handshakes). **The source of truth** for every RTL boundary. |
 | Plans | [plans/README.md](plans/README.md) | First-class planning artifacts: active execution plans, completed plans with decision logs, and the tech-debt register. |
-| Guides | [guides/](guides/) | How-to workflow docs (GitLab/MR workflow, lab-server examples). |
+| Guides | [guides/](guides/) | How-to workflows, including NDA-safe file handling, GitLab/MR workflow, and lab-server examples. |
 | Reference | [reference/](reference/) | Platform and course reference material (Didactic SoC platform, course kick-off). |
 | Verification | [verification/](verification/) | Verification and bring-up reports; UVM testbench guide. |
 
@@ -37,6 +37,7 @@ docs/
 │   ├── asic_backend_guide.md # ASIC flow how-to, signoff status, Run 2 plan
 │   ├── benchmark.md          # GEMM benchmark guide & analysis
 │   ├── io_bottleneck_solutions.md  # comparative analysis of I/O bottleneck fixes
+│   ├── nda_file_handling.md  # NDA file storage, sharing, and GitLab restrictions
 │   ├── gitlab_workflow.md
 │   └── lab_server_examples.md
 ├── reference/                # platform & course reference material
